@@ -30,7 +30,7 @@ class Dashboard {
         $params = [$dataInicio, $dataFim];
         
         if ($profissional) {
-            $whereConditions[] = "profissional = ?";
+            $whereConditions[] = "codprofissional = ?";
             $params[] = $profissional;
         }
         if ($especialidade) {
@@ -112,7 +112,7 @@ class Dashboard {
         $params = [$dataInicio, $dataFim];
         
         if ($profissional) {
-            $whereConditions[] = "profissional = ?";
+            $whereConditions[] = "codprofissional = ?";
             $params[] = $profissional;
         }
         if ($especialidade) {
@@ -189,7 +189,7 @@ class Dashboard {
         $params = [$dataInicio, $dataFim];
         
         if ($profissional) {
-            $whereConditions[] = "profissional = ?";
+            $whereConditions[] = "codprofissional = ?";
             $params[] = $profissional;
         }
         if ($especialidade) {
@@ -314,7 +314,7 @@ class Dashboard {
         $params = [$dataInicio, $dataFim];
         
         if ($profissional) {
-            $whereConditions[] = "profissional = ?";
+            $whereConditions[] = "codprofissional = ?";
             $params[] = $profissional;
         }
         if ($especialidade) {
