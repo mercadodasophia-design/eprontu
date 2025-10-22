@@ -26,7 +26,7 @@ class Dashboard {
         }
         
         // Construir condições WHERE
-        $whereConditions = ["dataagendamento BETWEEN ? AND ?"];
+        $whereConditions = ["datamovimento BETWEEN ? AND ?"];
         $params = [$dataInicio, $dataFim];
         
         if ($profissional) {
@@ -56,7 +56,7 @@ class Dashboard {
             AND paciente NOT IN (
                 SELECT DISTINCT paciente 
                 FROM agenda 
-                WHERE dataagendamento < ?
+                WHERE datamovimento < ?
             )
         ";
         $paramsNovos = array_merge($params, [$dataInicio]);
@@ -64,7 +64,7 @@ class Dashboard {
         
         // Tempo médio de atendimento (simulado - baseado em dados existentes)
         $sqlTempo = "
-            SELECT AVG(TIMESTAMPDIFF(MINUTE, horamarcacao, horachegada)) as tempo_medio 
+            SELECT AVG(EXTRACT(EPOCH FROM, horamarcacao, horachegada)) as tempo_medio 
             FROM agenda 
             WHERE $whereClause 
             AND horamarcacao IS NOT NULL 
@@ -108,7 +108,7 @@ class Dashboard {
             $dataFim = date('Y-m-d');
         }
         
-        $whereConditions = ["dataagendamento BETWEEN ? AND ?"];
+        $whereConditions = ["datamovimento BETWEEN ? AND ?"];
         $params = [$dataInicio, $dataFim];
         
         if ($profissional) {
@@ -128,13 +128,13 @@ class Dashboard {
         
         $sql = "
             SELECT 
-                dataagendamento as data,
+                datamovimento as data,
                 COUNT(*) as atendimentos,
                 50 as meta
             FROM agenda 
             WHERE $whereClause
-            GROUP BY dataagendamento
-            ORDER BY dataagendamento
+            GROUP BY datamovimento
+            ORDER BY datamovimento
         ";
         
         $result = $this->db->fetchAll($sql, $params);
@@ -185,7 +185,7 @@ class Dashboard {
             $dataFim = date('Y-m-d');
         }
         
-        $whereConditions = ["dataagendamento BETWEEN ? AND ?"];
+        $whereConditions = ["datamovimento BETWEEN ? AND ?"];
         $params = [$dataInicio, $dataFim];
         
         if ($profissional) {
@@ -256,11 +256,11 @@ class Dashboard {
             $dataFim = date('Y-m-d');
         }
         
-        $whereConditions = ["a.dataagendamento BETWEEN ? AND ?"];
+        $whereConditions = ["a.datamovimento BETWEEN ? AND ?"];
         $params = [$dataInicio, $dataFim];
         
         if ($profissional) {
-            $whereConditions[] = "a.profissional = ?";
+            $whereConditions[] = "a.codprofissional = ?";
             $params[] = $profissional;
         }
         if ($especialidade) {
@@ -280,10 +280,10 @@ class Dashboard {
                 COUNT(*) as atendimentos,
                 e.nome as especialidade
             FROM agenda a
-            LEFT JOIN profissionais p ON a.profissional = p.codigo
-            LEFT JOIN especialidades e ON a.especialidade = e.codigo
+            LEFT JOIN profissionais p ON a.codprofissional = p.codprofissional
+            LEFT JOIN especialidades e ON a.especialidade = e.codespecialidade
             WHERE $whereClause
-            GROUP BY a.profissional, p.nome, e.nome
+            GROUP BY a.codprofissional, p.nome, e.nome
             ORDER BY atendimentos DESC
             LIMIT 10
         ";
@@ -310,7 +310,7 @@ class Dashboard {
             $dataFim = date('Y-m-d');
         }
         
-        $whereConditions = ["dataagendamento BETWEEN ? AND ?"];
+        $whereConditions = ["datamovimento BETWEEN ? AND ?"];
         $params = [$dataInicio, $dataFim];
         
         if ($profissional) {
@@ -330,16 +330,16 @@ class Dashboard {
         
         $sql = "
             SELECT 
-                DATE_FORMAT(dataagendamento, '%Y-%m') as mes,
+                TO_CHAR(datamovimento, 'YYYY-MM') as mes,
                 COUNT(DISTINCT paciente) as novos_pacientes
             FROM agenda 
             WHERE $whereClause
             AND paciente NOT IN (
                 SELECT DISTINCT paciente 
                 FROM agenda 
-                WHERE dataagendamento < ?
+                WHERE datamovimento < ?
             )
-            GROUP BY DATE_FORMAT(dataagendamento, '%Y-%m')
+            GROUP BY TO_CHAR(datamovimento, 'YYYY-MM')
             ORDER BY mes
         ";
         
@@ -367,11 +367,11 @@ class Dashboard {
             $dataFim = date('Y-m-d');
         }
         
-        $whereConditions = ["a.dataagendamento BETWEEN ? AND ?"];
+        $whereConditions = ["a.datamovimento BETWEEN ? AND ?"];
         $params = [$dataInicio, $dataFim];
         
         if ($profissional) {
-            $whereConditions[] = "a.profissional = ?";
+            $whereConditions[] = "a.codprofissional = ?";
             $params[] = $profissional;
         }
         if ($especialidade) {
@@ -390,7 +390,7 @@ class Dashboard {
                 e.nome as especialidade,
                 COUNT(*) as atendimentos
             FROM agenda a
-            LEFT JOIN especialidades e ON a.especialidade = e.codigo
+            LEFT JOIN especialidades e ON a.especialidade = e.codespecialidade
             WHERE $whereClause
             GROUP BY a.especialidade, e.nome
             ORDER BY atendimentos DESC
@@ -421,11 +421,11 @@ class Dashboard {
             $dataFim = date('Y-m-d');
         }
         
-        $whereConditions = ["a.dataagendamento BETWEEN ? AND ?"];
+        $whereConditions = ["a.datamovimento BETWEEN ? AND ?"];
         $params = [$dataInicio, $dataFim];
         
         if ($profissional) {
-            $whereConditions[] = "a.profissional = ?";
+            $whereConditions[] = "a.codprofissional = ?";
             $params[] = $profissional;
         }
         if ($especialidade) {
@@ -442,15 +442,15 @@ class Dashboard {
         $sql = "
             SELECT 
                 p.nome as profissional,
-                AVG(TIMESTAMPDIFF(MINUTE, a.horamarcacao, a.horachegada)) as tempo_medio,
+                AVG(EXTRACT(EPOCH FROM, a.horamarcacao, a.horachegada)) as tempo_medio,
                 e.nome as especialidade
             FROM agenda a
-            LEFT JOIN profissionais p ON a.profissional = p.codigo
-            LEFT JOIN especialidades e ON a.especialidade = e.codigo
+            LEFT JOIN profissionais p ON a.codprofissional = p.codprofissional
+            LEFT JOIN especialidades e ON a.especialidade = e.codespecialidade
             WHERE $whereClause
             AND a.horamarcacao IS NOT NULL 
             AND a.horachegada IS NOT NULL
-            GROUP BY a.profissional, p.nome, e.nome
+            GROUP BY a.codprofissional, p.nome, e.nome
             ORDER BY tempo_medio ASC
             LIMIT 10
         ";
