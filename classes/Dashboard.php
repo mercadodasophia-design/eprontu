@@ -64,7 +64,7 @@ class Dashboard {
         
         // Tempo médio de atendimento (simulado - baseado em dados existentes)
         $sqlTempo = "
-            SELECT AVG(EXTRACT(EPOCH FROM (horachegada::timestamp - horamarcacao::timestamp))) as tempo_medio 
+            SELECT AVG(EXTRACT(EPOCH FROM (horachegada::time - horamarcacao::time))) as tempo_medio 
             FROM agenda 
             WHERE $whereClause 
             AND horamarcacao IS NOT NULL 
@@ -442,7 +442,7 @@ class Dashboard {
         $sql = "
             SELECT 
                 p.profissional,
-                AVG(EXTRACT(EPOCH FROM (a.horachegada::timestamp - a.horamarcacao::timestamp))) as tempo_medio,
+                AVG(EXTRACT(EPOCH FROM (a.horachegada::time - a.horamarcacao::time))) as tempo_medio,
                 e.especialidade
             FROM agenda a
             LEFT JOIN profissionais p ON a.codprofissional = p.codprofissional
