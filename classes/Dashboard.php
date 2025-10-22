@@ -45,17 +45,17 @@ class Dashboard {
         $whereClause = implode(' AND ', $whereConditions);
         
         // Total de atendimentos
-        $sqlAtendimentos = "SELECT COUNT(*) as total FROM tabagendconsul2 WHERE $whereClause";
+        $sqlAtendimentos = "SELECT COUNT(*) as total FROM agenda WHERE $whereClause";
         $totalAtendimentos = $this->db->fetchOne($sqlAtendimentos, $params)['total'];
         
         // Novos pacientes (primeira consulta no período)
         $sqlNovosPacientes = "
             SELECT COUNT(DISTINCT paciente) as total 
-            FROM tabagendconsul2 
+            FROM agenda 
             WHERE $whereClause 
             AND paciente NOT IN (
                 SELECT DISTINCT paciente 
-                FROM tabagendconsul2 
+                FROM agenda 
                 WHERE dataatendimento < ?
             )
         ";
@@ -65,7 +65,7 @@ class Dashboard {
         // Tempo médio de atendimento (simulado - baseado em dados existentes)
         $sqlTempo = "
             SELECT AVG(TIMESTAMPDIFF(MINUTE, horamarcacao, horachegada)) as tempo_medio 
-            FROM tabagendconsul2 
+            FROM agenda 
             WHERE $whereClause 
             AND horamarcacao IS NOT NULL 
             AND horachegada IS NOT NULL
@@ -131,7 +131,7 @@ class Dashboard {
                 dataatendimento as data,
                 COUNT(*) as atendimentos,
                 50 as meta
-            FROM tabagendconsul2 
+            FROM agenda 
             WHERE $whereClause
             GROUP BY dataatendimento
             ORDER BY dataatendimento
@@ -213,7 +213,7 @@ class Dashboard {
                     ELSE 'Outros'
                 END as status,
                 COUNT(*) as quantidade
-            FROM tabagendconsul2 
+            FROM agenda 
             WHERE $whereClause
             GROUP BY status
         ";
@@ -279,7 +279,7 @@ class Dashboard {
                 p.nome as profissional,
                 COUNT(*) as atendimentos,
                 e.nome as especialidade
-            FROM tabagendconsul2 a
+            FROM agenda a
             LEFT JOIN profissionais p ON a.profissional = p.codigo
             LEFT JOIN especialidades e ON a.especialidade = e.codigo
             WHERE $whereClause
@@ -332,11 +332,11 @@ class Dashboard {
             SELECT 
                 DATE_FORMAT(dataatendimento, '%Y-%m') as mes,
                 COUNT(DISTINCT paciente) as novos_pacientes
-            FROM tabagendconsul2 
+            FROM agenda 
             WHERE $whereClause
             AND paciente NOT IN (
                 SELECT DISTINCT paciente 
-                FROM tabagendconsul2 
+                FROM agenda 
                 WHERE dataatendimento < ?
             )
             GROUP BY DATE_FORMAT(dataatendimento, '%Y-%m')
@@ -389,7 +389,7 @@ class Dashboard {
             SELECT 
                 e.nome as especialidade,
                 COUNT(*) as atendimentos
-            FROM tabagendconsul2 a
+            FROM agenda a
             LEFT JOIN especialidades e ON a.especialidade = e.codigo
             WHERE $whereClause
             GROUP BY a.especialidade, e.nome
@@ -444,7 +444,7 @@ class Dashboard {
                 p.nome as profissional,
                 AVG(TIMESTAMPDIFF(MINUTE, a.horamarcacao, a.horachegada)) as tempo_medio,
                 e.nome as especialidade
-            FROM tabagendconsul2 a
+            FROM agenda a
             LEFT JOIN profissionais p ON a.profissional = p.codigo
             LEFT JOIN especialidades e ON a.especialidade = e.codigo
             WHERE $whereClause
