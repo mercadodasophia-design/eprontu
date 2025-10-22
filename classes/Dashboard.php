@@ -26,7 +26,7 @@ class Dashboard {
         }
         
         // Construir condições WHERE
-        $whereConditions = ["dataatendimento BETWEEN ? AND ?"];
+        $whereConditions = ["dataagendamento BETWEEN ? AND ?"];
         $params = [$dataInicio, $dataFim];
         
         if ($profissional) {
@@ -56,7 +56,7 @@ class Dashboard {
             AND paciente NOT IN (
                 SELECT DISTINCT paciente 
                 FROM agenda 
-                WHERE dataatendimento < ?
+                WHERE dataagendamento < ?
             )
         ";
         $paramsNovos = array_merge($params, [$dataInicio]);
@@ -108,7 +108,7 @@ class Dashboard {
             $dataFim = date('Y-m-d');
         }
         
-        $whereConditions = ["dataatendimento BETWEEN ? AND ?"];
+        $whereConditions = ["dataagendamento BETWEEN ? AND ?"];
         $params = [$dataInicio, $dataFim];
         
         if ($profissional) {
@@ -128,13 +128,13 @@ class Dashboard {
         
         $sql = "
             SELECT 
-                dataatendimento as data,
+                dataagendamento as data,
                 COUNT(*) as atendimentos,
                 50 as meta
             FROM agenda 
             WHERE $whereClause
-            GROUP BY dataatendimento
-            ORDER BY dataatendimento
+            GROUP BY dataagendamento
+            ORDER BY dataagendamento
         ";
         
         $result = $this->db->fetchAll($sql, $params);
@@ -185,7 +185,7 @@ class Dashboard {
             $dataFim = date('Y-m-d');
         }
         
-        $whereConditions = ["dataatendimento BETWEEN ? AND ?"];
+        $whereConditions = ["dataagendamento BETWEEN ? AND ?"];
         $params = [$dataInicio, $dataFim];
         
         if ($profissional) {
@@ -256,7 +256,7 @@ class Dashboard {
             $dataFim = date('Y-m-d');
         }
         
-        $whereConditions = ["a.dataatendimento BETWEEN ? AND ?"];
+        $whereConditions = ["a.dataagendamento BETWEEN ? AND ?"];
         $params = [$dataInicio, $dataFim];
         
         if ($profissional) {
@@ -310,7 +310,7 @@ class Dashboard {
             $dataFim = date('Y-m-d');
         }
         
-        $whereConditions = ["dataatendimento BETWEEN ? AND ?"];
+        $whereConditions = ["dataagendamento BETWEEN ? AND ?"];
         $params = [$dataInicio, $dataFim];
         
         if ($profissional) {
@@ -330,16 +330,16 @@ class Dashboard {
         
         $sql = "
             SELECT 
-                DATE_FORMAT(dataatendimento, '%Y-%m') as mes,
+                DATE_FORMAT(dataagendamento, '%Y-%m') as mes,
                 COUNT(DISTINCT paciente) as novos_pacientes
             FROM agenda 
             WHERE $whereClause
             AND paciente NOT IN (
                 SELECT DISTINCT paciente 
                 FROM agenda 
-                WHERE dataatendimento < ?
+                WHERE dataagendamento < ?
             )
-            GROUP BY DATE_FORMAT(dataatendimento, '%Y-%m')
+            GROUP BY DATE_FORMAT(dataagendamento, '%Y-%m')
             ORDER BY mes
         ";
         
@@ -367,7 +367,7 @@ class Dashboard {
             $dataFim = date('Y-m-d');
         }
         
-        $whereConditions = ["a.dataatendimento BETWEEN ? AND ?"];
+        $whereConditions = ["a.dataagendamento BETWEEN ? AND ?"];
         $params = [$dataInicio, $dataFim];
         
         if ($profissional) {
@@ -421,7 +421,7 @@ class Dashboard {
             $dataFim = date('Y-m-d');
         }
         
-        $whereConditions = ["a.dataatendimento BETWEEN ? AND ?"];
+        $whereConditions = ["a.dataagendamento BETWEEN ? AND ?"];
         $params = [$dataInicio, $dataFim];
         
         if ($profissional) {
