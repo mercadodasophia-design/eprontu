@@ -64,7 +64,7 @@ class Dashboard {
         
         // Tempo médio de atendimento (simulado - baseado em dados existentes)
         $sqlTempo = "
-            SELECT AVG(EXTRACT(EPOCH FROM, horamarcacao, horachegada)) as tempo_medio 
+            SELECT AVG(EXTRACT(EPOCH FROM (horachegada - horamarcacao))) as tempo_medio 
             FROM agenda 
             WHERE $whereClause 
             AND horamarcacao IS NOT NULL 
@@ -276,14 +276,14 @@ class Dashboard {
         
         $sql = "
             SELECT 
-                p.nome as profissional,
+                p.profissional,
                 COUNT(*) as atendimentos,
-                e.nome as especialidade
+                e.especialidade
             FROM agenda a
             LEFT JOIN profissionais p ON a.codprofissional = p.codprofissional
             LEFT JOIN especialidades e ON a.especialidade = e.codespecialidade
             WHERE $whereClause
-            GROUP BY a.codprofissional, p.nome, e.nome
+            GROUP BY a.codprofissional, p.profissional, e.especialidade
             ORDER BY atendimentos DESC
             LIMIT 10
         ";
@@ -387,7 +387,7 @@ class Dashboard {
         
         $sql = "
             SELECT 
-                e.nome as especialidade,
+                e.especialidade,
                 COUNT(*) as atendimentos
             FROM agenda a
             LEFT JOIN especialidades e ON a.especialidade = e.codespecialidade
@@ -441,16 +441,16 @@ class Dashboard {
         
         $sql = "
             SELECT 
-                p.nome as profissional,
-                AVG(EXTRACT(EPOCH FROM, a.horamarcacao, a.horachegada)) as tempo_medio,
-                e.nome as especialidade
+                p.profissional,
+                AVG(EXTRACT(EPOCH FROM (a.horachegada - a.horamarcacao))) as tempo_medio,
+                e.especialidade
             FROM agenda a
             LEFT JOIN profissionais p ON a.codprofissional = p.codprofissional
             LEFT JOIN especialidades e ON a.especialidade = e.codespecialidade
             WHERE $whereClause
             AND a.horamarcacao IS NOT NULL 
             AND a.horachegada IS NOT NULL
-            GROUP BY a.codprofissional, p.nome, e.nome
+            GROUP BY a.codprofissional, p.profissional, e.especialidade
             ORDER BY tempo_medio ASC
             LIMIT 10
         ";
