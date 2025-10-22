@@ -4,7 +4,7 @@
  * Gerencia todas as consultas relacionadas ao dashboard
  */
 
-require_once 'config/database.php';
+require_once __DIR__ . '/../config/database.php';
 
 class Dashboard {
     private $db;

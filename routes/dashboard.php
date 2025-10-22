@@ -5,7 +5,7 @@
  */
 
 // Incluir classes necessárias
-require_once '../classes/Dashboard.php';
+require_once __DIR__ . '/../classes/Dashboard.php';
 
 $dashboard = new Dashboard();
 
