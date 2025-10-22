@@ -96,3 +96,9 @@ gcloud run logs read e-prontu-api --region us-central1
 - **Gratuito** até 2 milhões de requests/mês
 - **Depois**: ~$0.40 por milhão de requests
 - **Muito barato** para começar!
+
+
+
+
+
+

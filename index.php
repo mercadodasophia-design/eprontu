@@ -205,9 +205,13 @@ try {
             require_once 'routes/medical-records.php';
             break;
             
-               case 'permissions':
-                   require_once 'routes/permissions.php';
-                   break;
+        case 'permissions':
+            require_once 'routes/permissions.php';
+            break;
+            
+        case 'dashboard':
+            require_once 'routes/dashboard.php';
+            break;
                    
                case 'especialidades':
                    // GET /api/especialidades

@@ -45,3 +45,9 @@ gcloud run deploy $SERVICE_NAME \
 
 echo "✅ Deploy concluído!"
 echo "🌐 URL da API: https://$SERVICE_NAME-$PROJECT_ID.a.run.app"
+
+
+
+
+
+
