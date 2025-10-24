@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>e-prontu API - Home e Testes</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; padding: 0; background: #f7f8fa; }
+    header { background: #1f6feb; color: #fff; padding: 16px 24px; }
+    header h1 { margin: 0; font-size: 20px; }
+    main { padding: 16px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px; }
+    section { background: #fff; border: 1px solid #e1e4e8; border-radius: 8px; padding: 12px; }
+    section h2 { margin: 0 0 8px; font-size: 16px; }
+    .controls { display: flex; gap: 8px; margin: 8px 0; }
+    .controls input, .controls select, .controls textarea { width: 100%; padding: 8px; border: 1px solid #c9d1d9; border-radius: 6px; font: inherit; }
+    .controls textarea { min-height: 100px; }
+    .btns { display: flex; gap: 8px; }
+    button { padding: 8px 12px; border-radius: 6px; border: 1px solid #1f6feb; background: #1f6feb; color: #fff; cursor: pointer; }
+    button.secondary { background: #fff; color: #1f6feb; }
+    pre { background: #0d1117; color: #c9d1d9; padding: 8px; border-radius: 6px; overflow: auto; max-height: 260px; }
+    small { color: #6e7781; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>e-prontu API — Home e Testes rápidos</h1>
+  </header>
+  <main>
+    <p>Use os blocos abaixo para testar os endpoints. As requisições utilizam <code>fetch</code> e exibem o JSON de resposta.</p>
+
+    <div class="grid">
+      <section id="receituario">
+        <h2>Receituário</h2>
+        <small>POST /api/receituario | GET /api/receituario?prontuario=...</small>
+        <div class="controls">
+          <textarea id="rx-post" placeholder="Payload JSON">
+{
+  "prontuario": 12345,
+  "medicamento": "Timolol 0.5%",
+  "quantidade": "1 frasco",
+  "posologia": "1 gota 2x ao dia",
+  "data": "2025-10-24",
+  "medico": 1,
+  "usuario": 1
+}
+          </textarea>
+        </div>
+        <div class="btns">
+          <button onclick="postJson('/api/receituario', 'rx-post', 'rx-out')">Enviar POST</button>
+          <button class="secondary" onclick="getJson('/api/receituario?prontuario=' + getPront('rx-post'), 'rx-out')">Listar por prontuário</button>
+        </div>
+        <pre id="rx-out"></pre>
+      </section>
+
+      <section id="anamnese">
+        <h2>Anamnese</h2>
+        <small>POST /api/anamnese | GET /api/anamnese?prontuario=...&date=YYYY-MM-DD</small>
+        <div class="controls">
+          <textarea id="an-post" placeholder="Payload JSON">
+{
+  "prontuario": 12345,
+  "data": "2025-10-24",
+  "medico": 1,
+  "usuario": 1,
+  "queixa": "Consulta de rotina",
+  "pa": "120/80",
+  "peso": 70.5,
+  "altura": 1.75,
+  "imc": 23.0,
+  "temperatura": 36.5,
+  "glicemia": 95,
+  "pulso": 70,
+  "freqcardiaca": 70
+}
+          </textarea>
+        </div>
+        <div class="btns">
+          <button onclick="postJson('/api/anamnese', 'an-post', 'an-out')">Enviar POST</button>
+          <button class="secondary" onclick="getJson('/api/anamnese?prontuario=' + getPront('an-post'), 'an-out')">Listar por prontuário</button>
+        </div>
+        <pre id="an-out"></pre>
+      </section>
+
+      <section id="pio">
+        <h2>Exames — PIO</h2>
+        <small>POST /api/exames/pio | GET /api/exames/pio?prontuario=...&rede=...</small>
+        <div class="controls">
+          <textarea id="pio-post" placeholder="Payload JSON">
+{
+  "prontuario": 12345,
+  "olho": "OD",
+  "pressao": 16,
+  "alvo": 14,
+  "tipo": "Tonômetro de aplanação",
+  "data": "2025-10-24",
+  "medico": 1,
+  "usuario": 1
+}
+          </textarea>
+        </div>
+        <div class="btns">
+          <button onclick="postJson('/api/exames/pio', 'pio-post', 'pio-out')">Enviar POST</button>
+          <button class="secondary" onclick="getJson('/api/exames/pio?prontuario=' + getPront('pio-post'), 'pio-out')">Listar por prontuário</button>
+        </div>
+        <pre id="pio-out"></pre>
+      </section>
+
+      <section id="bio">
+        <h2>Exames — Biomicroscopia</h2>
+        <small>POST /api/exames/biomicroscopia | GET /api/exames/biomicroscopia?prontuario=...&date=YYYY-MM-DD</small>
+        <div class="controls">
+          <textarea id="bio-post" placeholder="Payload JSON">
+{
+  "prontuario": 12345,
+  "data": "2025-10-24",
+  "medico": 1,
+  "usuario": 1,
+  "obsod": "Córnea clara",
+  "obsoe": "Córnea clara",
+  "corneaod1": "Transparente",
+  "corneaoe1": "Transparente"
+}
+          </textarea>
+        </div>
+        <div class="btns">
+          <button onclick="postJson('/api/exames/biomicroscopia', 'bio-post', 'bio-out')">Enviar POST</button>
+          <button class="secondary" onclick="getJson('/api/exames/biomicroscopia?prontuario=' + getPront('bio-post'), 'bio-out')">Listar por prontuário</button>
+        </div>
+        <pre id="bio-out"></pre>
+      </section>
+
+      <section id="retina">
+        <h2>Exames — Retina</h2>
+        <small>POST /api/exames/retina | GET /api/exames/retina?prontuario=...&tipo=A&date=YYYY-MM-DD</small>
+        <div class="controls">
+          <textarea id="ret-post" placeholder="Payload JSON">
+{
+  "prontuario": 12345,
+  "olho": "OE",
+  "tipo": "A",
+  "data": "2025-10-24",
+  "medico": 1,
+  "usuario": 1,
+  "impressao": "Sem alterações relevantes",
+  "me_to": true,
+  "pa_nitidos": true,
+  "re_360": true
+}
+          </textarea>
+        </div>
+        <div class="btns">
+          <button onclick="postJson('/api/exames/retina', 'ret-post', 'ret-out')">Enviar POST</button>
+          <button class="secondary" onclick="getJson('/api/exames/retina?prontuario=' + getPront('ret-post'), 'ret-out')">Listar por prontuário</button>
+        </div>
+        <pre id="ret-out"></pre>
+      </section>
+    </div>
+
+    <section>
+      <h2>Observações</h2>
+      <ul>
+        <li>Campos de datas usam formato <code>YYYY-MM-DD</code>.</li>
+        <li><code>olho</code> aceita <code>OD</code>/<code>OE</code> e é normalizado para <code>D</code>/<code>E</code> no backend.</li>
+        <li>Por enquanto, alguns endpoints aceitam <code>medico</code> no payload; será integrado via token depois.</li>
+      </ul>
+    </section>
+  </main>
+
+  <script>
+    function getPront(textareaId) {
+      try {
+        const data = JSON.parse(document.getElementById(textareaId).value);
+        return encodeURIComponent(data.prontuario || '');
+      } catch (_) { return ''; }
+    }
+
+    async function postJson(path, srcId, outId) {
+      const out = document.getElementById(outId);
+      try {
+        const body = JSON.parse(document.getElementById(srcId).value);
+        const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const text = await res.text();
+        try { out.textContent = JSON.stringify(JSON.parse(text), null, 2); }
+        catch { out.textContent = text; }
+      } catch (e) {
+        out.textContent = 'Erro: ' + e.message;
+      }
+    }
+
+    async function getJson(path, outId) {
+      const out = document.getElementById(outId);
+      try {
+        const res = await fetch(path);
+        const text = await res.text();
+        try { out.textContent = JSON.stringify(JSON.parse(text), null, 2); }
+        catch { out.textContent = text; }
+      } catch (e) {
+        out.textContent = 'Erro: ' + e.message;
+      }
+    }
+
+    function addSchemaButtons() {
+      const endpoints = [
+        { sectionId: 'receituario', url: '/api/receituario?schema=1', outId: 'rx-out' },
+        { sectionId: 'anamnese', url: '/api/anamnese?schema=1', outId: 'an-out' },
+        { sectionId: 'pio', url: '/api/exames/pio?schema=1', outId: 'pio-out' },
+        { sectionId: 'bio', url: '/api/exames/biomicroscopia?schema=1', outId: 'bio-out' },
+        { sectionId: 'retina', url: '/api/exames/retina?schema=1', outId: 'ret-out' },
+      ];
+      endpoints.forEach(ep => {
+        const section = document.getElementById(ep.sectionId);
+        if (!section) return;
+        const btns = section.querySelector('.btns');
+        const btn = document.createElement('button');
+        btn.textContent = 'Ver Schema';
+        btn.className = 'secondary';
+        btn.onclick = () => getJson(ep.url, ep.outId);
+        if (btns) btns.appendChild(btn);
+      });
+    }
+
+    window.addEventListener('DOMContentLoaded', addSchemaButtons);
+  </script>
+</body>
+</html>
