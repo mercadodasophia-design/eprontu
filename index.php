@@ -249,6 +249,10 @@ try {
         case 'bobina-documentos':
             require_once 'routes/bobina_documentos.php';
             break;
+
+        case 'campanhas':
+            require_once 'routes/campanhas.php';
+            break;
             
         case 'bobina-timeline':
             require_once 'routes/bobina_timeline.php';
