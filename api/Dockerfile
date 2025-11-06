@@ -4,11 +4,10 @@ FROM php:8.2-apache
 # Install required extensions
 RUN apt-get update && apt-get install -y \
     libzip-dev \
-    libpq-dev \
     zip \
     unzip \
     curl \
-    && docker-php-ext-install zip pdo pdo_pgsql
+    && docker-php-ext-install zip pdo pdo_mysql
 
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer

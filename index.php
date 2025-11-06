@@ -60,6 +60,15 @@ $response = new Response();
 try {
     // Roteamento
     switch ($endpoint) {
+        case '':
+            header('Content-Type: text/html; charset=utf-8');
+            $homePath = __DIR__ . '/home.html';
+            if (file_exists($homePath)) {
+                readfile($homePath);
+            } else {
+                echo '<!doctype html><html><head><meta charset="utf-8"><title>API Home</title></head><body><h1>API Home</h1><p>Arquivo home.html não encontrado.</p></body></html>';
+            }
+            break;
         case 'auth':
             // Debug: verificar se o arquivo existe
             if (!file_exists('routes/auth.php')) {
@@ -211,6 +220,38 @@ try {
             
         case 'dashboard':
             require_once 'routes/dashboard.php';
+            break;
+            
+        case 'anamnese':
+            require_once 'routes/anamnese.php';
+            break;
+            
+        case 'exames':
+            require_once 'routes/exames.php';
+            break;
+            
+        case 'receituario':
+            require_once 'routes/receituario.php';
+            break;
+            
+        case 'bobina-exames':
+            require_once 'routes/bobina_exames.php';
+            break;
+            
+        case 'bobina-cirurgias':
+            require_once 'routes/bobina_cirurgias.php';
+            break;
+            
+        case 'bobina-medicamentos':
+            require_once 'routes/bobina_medicamentos.php';
+            break;
+            
+        case 'bobina-documentos':
+            require_once 'routes/bobina_documentos.php';
+            break;
+            
+        case 'bobina-timeline':
+            require_once 'routes/bobina_timeline.php';
             break;
                    
                case 'especialidades':
@@ -737,73 +778,8 @@ try {
                    break;
                    
                case 'bobina':
-                   // Proxy para API Bioma
-                   try {
-                       $input = json_decode(file_get_contents('php://input'), true);
-                       
-                       if (!$input || !isset($input['filtros'])) {
-                           $response->error('Dados de requisição inválidos', 400);
-                           break;
-                       }
-                       
-                       $filtros = $input['filtros'];
-                       $prontuario = $filtros['prontuario'] ?? '';
-                       $especialidade = $filtros['especialidade'] ?? '1';
-                       
-                       if (empty($prontuario)) {
-                           $response->error('Prontuário é obrigatório', 400);
-                           break;
-                       }
-                       
-                       // Configurações da API Bioma
-                       $biomaApiUrl = 'https://bioma.app.br/api/bobina/listar/1/100';
-                       $biomaToken = '2ece8122bc80db2a816c2df41d6b2a1f';
-                       
-                       // Preparar requisição para API Bioma
-                       $requestData = [
-                           'filtros' => [
-                               'prontuario' => $prontuario,
-                               'especialidade' => $especialidade,
-                           ]
-                       ];
-                       
-                       // Fazer requisição para API Bioma
-                       $ch = curl_init();
-                       curl_setopt($ch, CURLOPT_URL, $biomaApiUrl . '?token=' . $biomaToken . '&encrypt=false');
-                       curl_setopt($ch, CURLOPT_POST, true);
-                       curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($requestData));
-                       curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                           'Content-Type: application/json',
-                           'Accept: application/json',
-                           'User-Agent: E-Prontu-API/1.0'
-                       ]);
-                       curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-                       curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-                       curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-                       curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-                       
-                       $biomaResponse = curl_exec($ch);
-                       $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-                       $error = curl_error($ch);
-                       curl_close($ch);
-                       
-                       if ($error) {
-                           $response->error('Erro cURL: ' . $error, 500);
-                           break;
-                       }
-                       
-                       if ($httpCode !== 200) {
-                           $response->error('Erro HTTP da API Bioma: ' . $httpCode, 500);
-                           break;
-                       }
-                       
-                       // Retornar resposta da API Bioma diretamente
-                       echo $biomaResponse;
-                       exit();
-                       
-                   } catch (Exception $e) {
-                       $response->error('Erro no proxy da bobina: ' . $e->getMessage(), 500);
-                   }
+                   // Rota local: encaminha para routes/bobina.php
+                   require_once 'routes/bobina.php';
                    break;
                    
                default:
