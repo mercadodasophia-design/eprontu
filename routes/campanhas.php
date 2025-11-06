@@ -94,14 +94,33 @@ try {
             break;
 
         case 'listar':
-            // Lista campanhas do usuário (token) com paginação básica via offset
-            if ($method !== 'POST') {
-                $response->error('Método não suportado. Use POST.', HTTP_METHOD_NOT_ALLOWED);
-            }
+            // Lista campanhas do usuário (token) com paginação via offset/page/limit
+            // Aceita GET ou POST
 
+            // Params por GET
             $ownerToken = isset($_GET['token']) ? trim((string)$_GET['token']) : '';
             $offset = isset($_GET['offset']) ? (int)$_GET['offset'] : 0;
-            $perPage = 10;
+            $page = isset($_GET['page']) ? (int)$_GET['page'] : 0;
+            $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 0;
+            $perPage = isset($_GET['per_page']) ? (int)$_GET['per_page'] : 0;
+
+            // Params por POST (JSON)
+            if ($method === 'POST') {
+                $raw = file_get_contents('php://input');
+                $input = json_decode($raw, true);
+                if (is_array($input)) {
+                    $ownerToken = isset($input['token']) ? trim((string)$input['token']) : $ownerToken;
+                    $offset = isset($input['offset']) ? (int)$input['offset'] : $offset;
+                    $page = isset($input['page']) ? (int)$input['page'] : $page;
+                    $limit = isset($input['limit']) ? (int)$input['limit'] : $limit;
+                    $perPage = isset($input['per_page']) ? (int)$input['per_page'] : $perPage;
+                }
+            }
+
+            // Resolve page/limit
+            $effectiveLimit = $perPage > 0 ? $perPage : ($limit > 0 ? $limit : 10);
+            $start = ($page > 1) ? (($page - 1) * $effectiveLimit) : $offset;
+            if ($start < 0) $start = 0;
 
             $storageFile = __DIR__ . '/../storage/campanhas.json';
             $lista = [];
@@ -111,33 +130,48 @@ try {
                 if (!is_array($lista)) $lista = [];
             }
 
-            // Filtra por token se informado
-            if ($ownerToken !== '') {
-                $lista = array_values(array_filter($lista, function($item) use ($ownerToken) {
-                    return isset($item['ownerToken']) && $item['ownerToken'] === $ownerToken;
-                }));
-            }
+            // Não filtrar por token: retornar todas as campanhas
+
+            // Ignora arquivados caso exista a flag
+            $lista = array_values(array_filter($lista, function($item) {
+                return empty($item['archived']);
+            }));
 
             $total = count($lista);
-            $slice = array_slice($lista, $offset, $perPage);
-            $hasMore = ($offset + $perPage) < $total;
+            $slice = array_slice($lista, $start, $effectiveLimit);
+            $hasMore = ($start + $effectiveLimit) < $total;
 
             $response->success([
                 'items' => $slice,
-                'offset' => $offset,
+                'offset' => $start,
+                'page' => $page > 0 ? $page : 1,
+                'limit' => $effectiveLimit,
                 'hasMore' => $hasMore,
                 'total' => $total
             ], 'Campanhas listadas com sucesso');
             break;
 
         case 'listar-todas':
-            // Lista TODAS as campanhas (sem filtro de token), com paginação via offset
-            if ($method !== 'POST') {
-                $response->error('Método não suportado. Use POST.', HTTP_METHOD_NOT_ALLOWED);
+            // Lista TODAS as campanhas (sem filtro de token), com paginação via offset/page/limit
+            $offset = isset($_GET['offset']) ? (int)$_GET['offset'] : 0;
+            $page = isset($_GET['page']) ? (int)$_GET['page'] : 0;
+            $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 0;
+            $perPage = isset($_GET['per_page']) ? (int)$_GET['per_page'] : 0;
+
+            if ($method === 'POST') {
+                $raw = file_get_contents('php://input');
+                $input = json_decode($raw, true);
+                if (is_array($input)) {
+                    $offset = isset($input['offset']) ? (int)$input['offset'] : $offset;
+                    $page = isset($input['page']) ? (int)$input['page'] : $page;
+                    $limit = isset($input['limit']) ? (int)$input['limit'] : $limit;
+                    $perPage = isset($input['per_page']) ? (int)$input['per_page'] : $perPage;
+                }
             }
 
-            $offset = isset($_GET['offset']) ? (int)$_GET['offset'] : 0;
-            $perPage = 10;
+            $effectiveLimit = $perPage > 0 ? $perPage : ($limit > 0 ? $limit : 10);
+            $start = ($page > 1) ? (($page - 1) * $effectiveLimit) : $offset;
+            if ($start < 0) $start = 0;
 
             $storageFile = __DIR__ . '/../storage/campanhas.json';
             $lista = [];
@@ -147,16 +181,154 @@ try {
                 if (!is_array($lista)) $lista = [];
             }
 
+            // Ignora arquivados
+            $lista = array_values(array_filter($lista, function($item) {
+                return empty($item['archived']);
+            }));
+
             $total = count($lista);
-            $slice = array_slice($lista, $offset, $perPage);
-            $hasMore = ($offset + $perPage) < $total;
+            $slice = array_slice($lista, $start, $effectiveLimit);
+            $hasMore = ($start + $effectiveLimit) < $total;
 
             $response->success([
                 'items' => $slice,
-                'offset' => $offset,
+                'offset' => $start,
+                'page' => $page > 0 ? $page : 1,
+                'limit' => $effectiveLimit,
                 'hasMore' => $hasMore,
                 'total' => $total
             ], 'Campanhas (todas) listadas com sucesso');
+            break;
+
+        case 'update':
+            // Atualiza uma campanha existente (PUT/POST)
+            if (!in_array($method, ['PUT', 'POST'])) {
+                $response->error('Método não suportado. Use PUT ou POST.', HTTP_METHOD_NOT_ALLOWED);
+            }
+            $raw = file_get_contents('php://input');
+            $input = json_decode($raw, true);
+            if (!$input || !is_array($input) || empty($input['id'])) {
+                $response->validation(['id' => 'ID da campanha é obrigatório'], 'Dados inválidos');
+            }
+
+            $storageFile = __DIR__ . '/../storage/campanhas.json';
+            $lista = [];
+            if (file_exists($storageFile)) {
+                $conteudo = file_get_contents($storageFile);
+                $lista = json_decode($conteudo, true);
+                if (!is_array($lista)) $lista = [];
+            }
+            $updated = null;
+            foreach ($lista as &$item) {
+                if (isset($item['id']) && $item['id'] === $input['id']) {
+                    // Merge simples dos campos
+                    foreach ($input as $k => $v) {
+                        if ($k === 'id') continue;
+                        $item[$k] = $v;
+                    }
+                    $updated = $item;
+                    break;
+                }
+            }
+            if ($updated === null) {
+                $response->error('Campanha não encontrada para atualização', 404);
+            }
+            file_put_contents($storageFile, json_encode($lista, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+            $response->success(['campanha' => $updated], 'Campanha atualizada com sucesso');
+            break;
+
+        case 'delete':
+            // Exclusão/arquivamento (DELETE/POST)
+            if (!in_array($method, ['DELETE', 'POST'])) {
+                $response->error('Método não suportado. Use DELETE ou POST.', HTTP_METHOD_NOT_ALLOWED);
+            }
+            $raw = file_get_contents('php://input');
+            $input = json_decode($raw, true);
+            if (!$input || !is_array($input) || empty($input['id'])) {
+                $response->validation(['id' => 'ID da campanha é obrigatório'], 'Dados inválidos');
+            }
+            $storageFile = __DIR__ . '/../storage/campanhas.json';
+            $lista = [];
+            if (file_exists($storageFile)) {
+                $conteudo = file_get_contents($storageFile);
+                $lista = json_decode($conteudo, true);
+                if (!is_array($lista)) $lista = [];
+            }
+            $deleted = false;
+            foreach ($lista as &$item) {
+                if (isset($item['id']) && $item['id'] === $input['id']) {
+                    $item['archived'] = true;
+                    $deleted = true;
+                    break;
+                }
+            }
+            if (!$deleted) {
+                $response->error('Campanha não encontrada para exclusão', 404);
+            }
+            file_put_contents($storageFile, json_encode($lista, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+            $response->success(null, 'Campanha arquivada com sucesso');
+            break;
+
+        case 'arquivar':
+            if ($method !== 'POST') {
+                $response->error('Método não suportado. Use POST.', HTTP_METHOD_NOT_ALLOWED);
+            }
+            $raw = file_get_contents('php://input');
+            $input = json_decode($raw, true);
+            if (!$input || !is_array($input) || empty($input['id'])) {
+                $response->validation(['id' => 'ID da campanha é obrigatório'], 'Dados inválidos');
+            }
+            $storageFile = __DIR__ . '/../storage/campanhas.json';
+            $lista = [];
+            if (file_exists($storageFile)) {
+                $conteudo = file_get_contents($storageFile);
+                $lista = json_decode($conteudo, true);
+                if (!is_array($lista)) $lista = [];
+            }
+            $ok = false;
+            foreach ($lista as &$item) {
+                if (isset($item['id']) && $item['id'] === $input['id']) {
+                    $item['archived'] = true;
+                    $ok = true;
+                    break;
+                }
+            }
+            if (!$ok) {
+                $response->error('Campanha não encontrada para arquivar', 404);
+            }
+            file_put_contents($storageFile, json_encode($lista, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+            $response->success(null, 'Campanha arquivada com sucesso');
+            break;
+
+        case 'restaurar':
+            if ($method !== 'POST') {
+                $response->error('Método não suportado. Use POST.', HTTP_METHOD_NOT_ALLOWED);
+            }
+            $raw = file_get_contents('php://input');
+            $input = json_decode($raw, true);
+            if (!$input || !is_array($input) || empty($input['id'])) {
+                $response->validation(['id' => 'ID da campanha é obrigatório'], 'Dados inválidos');
+            }
+            $storageFile = __DIR__ . '/../storage/campanhas.json';
+            $lista = [];
+            if (file_exists($storageFile)) {
+                $conteudo = file_get_contents($storageFile);
+                $lista = json_decode($conteudo, true);
+                if (!is_array($lista)) $lista = [];
+            }
+            $ok = false;
+            foreach ($lista as &$item) {
+                if (isset($item['id']) && $item['id'] === $input['id']) {
+                    $item['archived'] = false;
+                    $ok = true;
+                    break;
+                }
+            }
+            if (!$ok) {
+                $response->error('Campanha não encontrada para restaurar', 404);
+            }
+            file_put_contents($storageFile, json_encode($lista, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+            $response->success(null, 'Campanha restaurada com sucesso');
             break;
 
         default:
