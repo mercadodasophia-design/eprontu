@@ -21,23 +21,30 @@ $action = $action ?? '';
 
 // Cria a tabela de campanhas caso não exista (PostgreSQL)
 function ensureCampanhasTable(PDO $pdo) {
-    $sql = "CREATE TABLE IF NOT EXISTS campanhas (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        description TEXT,
-        objetivo TEXT,
-        script TEXT,
-        data_inicio TEXT,
-        data_fim TEXT,
-        canal TEXT,
-        leads_count INTEGER DEFAULT 0,
-        responsaveis JSONB,
-        mailigs JSONB,
-        owner_token TEXT,
-        created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
-        archived BOOLEAN DEFAULT FALSE
-    )";
-    $pdo->exec($sql);
+    try {
+        $exists = $pdo->query("SELECT to_regclass('public.campanhas')")->fetchColumn();
+        if (!$exists) {
+            $sql = "CREATE TABLE IF NOT EXISTS public.campanhas (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT,
+                objetivo TEXT,
+                script TEXT,
+                data_inicio TEXT,
+                data_fim TEXT,
+                canal TEXT,
+                leads_count INTEGER DEFAULT 0,
+                responsaveis JSONB,
+                mailigs JSONB,
+                owner_token TEXT,
+                created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+                archived BOOLEAN DEFAULT FALSE
+            )";
+            $pdo->exec($sql);
+        }
+    } catch (Exception $e) {
+        // Se não conseguir criar/verificar, seguir em frente para não quebrar a rota
+    }
 }
 
 try {
@@ -66,7 +73,7 @@ try {
             $inserted = 0;
             for ($i = 0; $i < $count; $i++) {
                 $id = uniqid('cmp_', true);
-                $sql = "INSERT INTO campanhas (id, name, description, objetivo, script, data_inicio, data_fim, canal, leads_count, responsaveis, mailigs, owner_token, created_at, archived)
+                $sql = "INSERT INTO public.campanhas (id, name, description, objetivo, script, data_inicio, data_fim, canal, leads_count, responsaveis, mailigs, owner_token, created_at, archived)
                         VALUES (:id, :name, :description, :objetivo, :script, :data_inicio, :data_fim, :canal, 0, '[]'::jsonb, '[]'::jsonb, :owner_token, :created_at, FALSE)";
                 $stmt = $pdo->prepare($sql);
                 $stmt->execute([
@@ -84,7 +91,7 @@ try {
                 $inserted++;
             }
 
-            $total = (int)$pdo->query("SELECT COUNT(*) FROM campanhas")->fetchColumn();
+            $total = (int)$pdo->query("SELECT COUNT(*) FROM public.campanhas")->fetchColumn();
             $response->success([
                 'inserted' => $inserted,
                 'total' => $total
@@ -128,7 +135,7 @@ try {
             $pdo = $db->getConnection();
             ensureCampanhasTable($pdo);
 
-            $sql = "INSERT INTO campanhas (id, name, description, objetivo, script, data_inicio, data_fim, canal, leads_count, responsaveis, mailigs, owner_token, created_at, archived)
+            $sql = "INSERT INTO public.campanhas (id, name, description, objetivo, script, data_inicio, data_fim, canal, leads_count, responsaveis, mailigs, owner_token, created_at, archived)
                     VALUES (:id, :name, :description, :objetivo, :script, :data_inicio, :data_fim, :canal, :leads_count, :responsaveis, :mailigs, :owner_token, :created_at, FALSE)";
             $stmt = $pdo->prepare($sql);
             $stmt->bindValue(':id', $id);
@@ -231,7 +238,7 @@ try {
             $total = 0;
             try {
                 $sql = "SELECT id, name, description, objetivo, leads_count, script, data_inicio, data_fim, canal, responsaveis, mailigs, created_at
-                        FROM campanhas
+                        FROM public.campanhas
                         WHERE (archived IS NULL OR archived = false)
                         ORDER BY COALESCE(created_at, NOW()) DESC
                         LIMIT :limit OFFSET :offset";
@@ -261,7 +268,7 @@ try {
                     ];
                 }
 
-                $countSql = "SELECT COUNT(*) FROM campanhas WHERE (archived IS NULL OR archived = false)";
+                $countSql = "SELECT COUNT(*) FROM public.campanhas WHERE (archived IS NULL OR archived = false)";
                 $total = (int)$pdo->query($countSql)->fetchColumn();
             } catch (Exception $e) {
                 // Em caso de erro inesperado, retorna vazio
@@ -310,7 +317,7 @@ try {
             $total = 0;
             try {
                 $sql = "SELECT id, name, description, objetivo, leads_count, script, data_inicio, data_fim, canal, responsaveis, mailigs, created_at
-                        FROM campanhas
+                        FROM public.campanhas
                         WHERE (archived IS NULL OR archived = false)
                         ORDER BY COALESCE(created_at, NOW()) DESC
                         LIMIT :limit OFFSET :offset";
@@ -340,7 +347,7 @@ try {
                     ];
                 }
 
-                $countSql = "SELECT COUNT(*) FROM campanhas WHERE (archived IS NULL OR archived = false)";
+                $countSql = "SELECT COUNT(*) FROM public.campanhas WHERE (archived IS NULL OR archived = false)";
                 $total = (int)$pdo->query($countSql)->fetchColumn();
             } catch (Exception $e) {
                 $items = [];
@@ -400,12 +407,12 @@ try {
             if (empty($setParts)) {
                 $response->validation(['fields' => 'Nenhum campo para atualizar'], 'Dados inválidos');
             }
-            $sql = "UPDATE campanhas SET " . implode(', ', $setParts) . " WHERE id = :id";
+            $sql = "UPDATE public.campanhas SET " . implode(', ', $setParts) . " WHERE id = :id";
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
 
             // Retorna registro atualizado
-            $stmt2 = $pdo->prepare("SELECT id, name, description, objetivo, leads_count, script, data_inicio, data_fim, canal, responsaveis, mailigs, archived, created_at FROM campanhas WHERE id = :id");
+            $stmt2 = $pdo->prepare("SELECT id, name, description, objetivo, leads_count, script, data_inicio, data_fim, canal, responsaveis, mailigs, archived, created_at FROM public.campanhas WHERE id = :id");
             $stmt2->execute([':id' => $input['id']]);
             $row = $stmt2->fetch(PDO::FETCH_ASSOC);
             if (!$row) { $response->error('Campanha não encontrada após atualização', 404); }
@@ -438,7 +445,7 @@ try {
             $db = Database::getInstance();
             $pdo = $db->getConnection();
             ensureCampanhasTable($pdo);
-            $stmt = $pdo->prepare('UPDATE campanhas SET archived = TRUE WHERE id = :id');
+            $stmt = $pdo->prepare('UPDATE public.campanhas SET archived = TRUE WHERE id = :id');
             $stmt->execute([':id' => $input['id']]);
             $response->success(null, 'Campanha arquivada com sucesso');
             break;
@@ -455,7 +462,7 @@ try {
             $db = Database::getInstance();
             $pdo = $db->getConnection();
             ensureCampanhasTable($pdo);
-            $stmt = $pdo->prepare('UPDATE campanhas SET archived = TRUE WHERE id = :id');
+            $stmt = $pdo->prepare('UPDATE public.campanhas SET archived = TRUE WHERE id = :id');
             $stmt->execute([':id' => $input['id']]);
             $response->success(null, 'Campanha arquivada com sucesso');
             break;
@@ -472,7 +479,7 @@ try {
             $db = Database::getInstance();
             $pdo = $db->getConnection();
             ensureCampanhasTable($pdo);
-            $stmt = $pdo->prepare('UPDATE campanhas SET archived = FALSE WHERE id = :id');
+            $stmt = $pdo->prepare('UPDATE public.campanhas SET archived = FALSE WHERE id = :id');
             $stmt->execute([':id' => $input['id']]);
             $response->success(null, 'Campanha restaurada com sucesso');
             break;
