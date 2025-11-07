@@ -19,14 +19,34 @@ if (!isset($method) || !isset($segments)) {
 
 $action = $action ?? '';
 
+// Cria a tabela de campanhas caso não exista (PostgreSQL)
+function ensureCampanhasTable(PDO $pdo) {
+    $sql = "CREATE TABLE IF NOT EXISTS campanhas (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        objetivo TEXT,
+        script TEXT,
+        data_inicio TEXT,
+        data_fim TEXT,
+        canal TEXT,
+        leads_count INTEGER DEFAULT 0,
+        responsaveis JSONB,
+        mailigs JSONB,
+        owner_token TEXT,
+        created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+        archived BOOLEAN DEFAULT FALSE
+    )";
+    $pdo->exec($sql);
+}
+
 try {
     switch ($action) {
         case 'seed':
-            // Popular storage com campanhas de exemplo (DEV)
+            // Popular tabela com campanhas de exemplo (DEV)
             if (!in_array($method, ['POST', 'GET'])) {
                 $response->error('Método não suportado. Use POST ou GET.', HTTP_METHOD_NOT_ALLOWED);
             }
-
             $count = isset($_GET['count']) ? (int)$_GET['count'] : 5;
             if ($method === 'POST') {
                 $raw = file_get_contents('php://input');
@@ -37,45 +57,37 @@ try {
             }
             if ($count <= 0) $count = 5;
 
-            $storageDir = __DIR__ . '/../storage';
-            $storageFile = $storageDir . '/campanhas.json';
-            if (!is_dir($storageDir)) {
-                @mkdir($storageDir, 0777, true);
-            }
-
-            $lista = [];
-            if (file_exists($storageFile)) {
-                $conteudo = file_get_contents($storageFile);
-                $lista = json_decode($conteudo, true);
-                if (!is_array($lista)) $lista = [];
-            }
+            $db = Database::getInstance();
+            $pdo = $db->getConnection();
+            ensureCampanhasTable($pdo);
 
             $ownerToken = isset($_GET['token']) ? trim((string)$_GET['token']) : 'anon';
             $now = date('Y-m-d H:i:s');
+            $inserted = 0;
             for ($i = 0; $i < $count; $i++) {
                 $id = uniqid('cmp_', true);
-                $lista[] = [
-                    'id' => $id,
-                    'name' => 'Campanha Exemplo ' . ($i + 1),
-                    'description' => 'Campanha criada via seed para testes',
-                    'objetivo' => 'Teste de listagem',
-                    'leadsCount' => 0,
-                    'script' => '',
-                    'dataInicio' => $now,
-                    'dataFim' => '',
-                    'canal' => null,
-                    'responsaveis' => [],
-                    'mailigs' => [],
-                    'ownerToken' => $ownerToken,
-                    'createdAt' => $now,
-                    'archived' => false,
-                ];
+                $sql = "INSERT INTO campanhas (id, name, description, objetivo, script, data_inicio, data_fim, canal, leads_count, responsaveis, mailigs, owner_token, created_at, archived)
+                        VALUES (:id, :name, :description, :objetivo, :script, :data_inicio, :data_fim, :canal, 0, '[]'::jsonb, '[]'::jsonb, :owner_token, :created_at, FALSE)";
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute([
+                    ':id' => $id,
+                    ':name' => 'Campanha Exemplo ' . ($i + 1),
+                    ':description' => 'Campanha criada via seed para testes',
+                    ':objetivo' => 'Teste de listagem',
+                    ':script' => '',
+                    ':data_inicio' => $now,
+                    ':data_fim' => '',
+                    ':canal' => null,
+                    ':owner_token' => $ownerToken,
+                    ':created_at' => $now,
+                ]);
+                $inserted++;
             }
 
-            file_put_contents($storageFile, json_encode($lista, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+            $total = (int)$pdo->query("SELECT COUNT(*) FROM campanhas")->fetchColumn();
             $response->success([
-                'inserted' => $count,
-                'total' => count($lista)
+                'inserted' => $inserted,
+                'total' => $total
             ], 'Seed realizado com sucesso');
             break;
         case 'add':
@@ -95,7 +107,6 @@ try {
             $objetivo = isset($input['objetivo']) ? trim((string)$input['objetivo']) : '';
             $mailigs = isset($input['mailigs']) && is_array($input['mailigs']) ? $input['mailigs'] : [];
 
-            // Se objetivo vier vazio, usa o nome como fallback
             if ($objetivo === '' && $name !== '') {
                 $objetivo = $name;
             }
@@ -103,16 +114,40 @@ try {
             $errors = [];
             if ($name === '') $errors['name'] = 'Nome da campanha é obrigatório';
             if (!is_array($mailigs)) $errors['mailigs'] = 'Lista de mailings é obrigatória';
-
             if (!empty($errors)) {
                 $response->validation($errors, 'Campos obrigatórios ausentes');
             }
 
-            // Normaliza estrutura: gera ID e retorna sucesso
+            // Normaliza estrutura para salvar no banco
             $id = uniqid('cmp_', true);
             $leadsCount = is_array($mailigs) ? count($mailigs) : 0;
             $ownerToken = isset($_GET['token']) ? trim((string)$_GET['token']) : 'anon';
             $createdAt = date('Y-m-d H:i:s');
+
+            $db = Database::getInstance();
+            $pdo = $db->getConnection();
+            ensureCampanhasTable($pdo);
+
+            $sql = "INSERT INTO campanhas (id, name, description, objetivo, script, data_inicio, data_fim, canal, leads_count, responsaveis, mailigs, owner_token, created_at, archived)
+                    VALUES (:id, :name, :description, :objetivo, :script, :data_inicio, :data_fim, :canal, :leads_count, :responsaveis, :mailigs, :owner_token, :created_at, FALSE)";
+            $stmt = $pdo->prepare($sql);
+            $stmt->bindValue(':id', $id);
+            $stmt->bindValue(':name', $name);
+            $stmt->bindValue(':description', $description);
+            $stmt->bindValue(':objetivo', $objetivo);
+            $stmt->bindValue(':script', (string)($input['script'] ?? ''));
+            $stmt->bindValue(':data_inicio', (string)($input['dataInicio'] ?? ''));
+            $stmt->bindValue(':data_fim', (string)($input['dataFim'] ?? ''));
+            // Canal pode vir como string ou objeto; guarda como texto JSON se necessário
+            $canalVal = $input['canal'] ?? null;
+            if (is_array($canalVal)) { $canalVal = json_encode($canalVal, JSON_UNESCAPED_UNICODE); }
+            $stmt->bindValue(':canal', $canalVal);
+            $stmt->bindValue(':leads_count', (int)$leadsCount, PDO::PARAM_INT);
+            $stmt->bindValue(':responsaveis', json_encode($input['responsaveis'] ?? [], JSON_UNESCAPED_UNICODE));
+            $stmt->bindValue(':mailigs', json_encode($mailigs, JSON_UNESCAPED_UNICODE));
+            $stmt->bindValue(':owner_token', $ownerToken);
+            $stmt->bindValue(':created_at', $createdAt);
+            $stmt->execute();
 
             $campanha = [
                 'id' => $id,
@@ -130,29 +165,11 @@ try {
                 'createdAt' => $createdAt,
             ];
 
-            // Persistir em storage local simples (JSON)
-            $storageDir = __DIR__ . '/../storage';
-            $storageFile = $storageDir . '/campanhas.json';
-            if (!is_dir($storageDir)) {
-                @mkdir($storageDir, 0777, true);
-            }
-            $lista = [];
-            if (file_exists($storageFile)) {
-                $conteudo = file_get_contents($storageFile);
-                $lista = json_decode($conteudo, true);
-                if (!is_array($lista)) $lista = [];
-            }
-            $lista[] = $campanha;
-            file_put_contents($storageFile, json_encode($lista, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
-
-            // Resposta padrão
-            $response->success([
-                'campanha' => $campanha
-            ], 'Campanha criada com sucesso');
+            $response->success(['campanha' => $campanha], 'Campanha criada e salva no banco com sucesso');
             break;
 
         case 'listar':
-            // Lista campanhas direto do banco com paginação (sem criptografia, sem filtrar por token)
+            // Lista campanhas direto do banco com paginação
             // Aceita GET ou POST
 
             // Params por GET
@@ -205,46 +222,51 @@ try {
                 ];
             };
 
-            // Consulta ao banco com fallback de colunas
+            // Consulta ao banco com fallback de criação de tabela
             $db = Database::getInstance();
             $pdo = $db->getConnection();
+            ensureCampanhasTable($pdo);
 
             $items = [];
             $total = 0;
             try {
-                // Primeiro, tenta consulta com colunas usuais
-                $sql = "SELECT id, name, description, objetivo, leads_count, script, data_inicio, data_fim, canal, responsaveis FROM campanhas WHERE (archived IS NULL OR archived = false) ORDER BY COALESCE(created_at, NOW()) DESC LIMIT :limit OFFSET :offset";
+                $sql = "SELECT id, name, description, objetivo, leads_count, script, data_inicio, data_fim, canal, responsaveis, mailigs, created_at
+                        FROM campanhas
+                        WHERE (archived IS NULL OR archived = false)
+                        ORDER BY COALESCE(created_at, NOW()) DESC
+                        LIMIT :limit OFFSET :offset";
                 $stmt = $pdo->prepare($sql);
                 $stmt->bindValue(':limit', (int)$effectiveLimit, PDO::PARAM_INT);
                 $stmt->bindValue(':offset', (int)$start, PDO::PARAM_INT);
                 $stmt->execute();
                 $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-                foreach ($rows as $r) { $items[] = $normalize($r); }
-
-                // Count com mesma cláusula
-                $countSql = "SELECT COUNT(*) AS c FROM campanhas WHERE (archived IS NULL OR archived = false)";
-                $countStmt = $pdo->prepare($countSql);
-                $countStmt->execute();
-                $total = (int)($countStmt->fetchColumn() ?: 0);
-            } catch (Exception $e1) {
-                // Fallback: tabela sem colunas 'archived' ou diferentes -> usar SELECT *
-                try {
-                    $sql2 = "SELECT * FROM campanhas ORDER BY 1 DESC LIMIT :limit OFFSET :offset";
-                    $stmt2 = $pdo->prepare($sql2);
-                    $stmt2->bindValue(':limit', (int)$effectiveLimit, PDO::PARAM_INT);
-                    $stmt2->bindValue(':offset', (int)$start, PDO::PARAM_INT);
-                    $stmt2->execute();
-                    $rows2 = $stmt2->fetchAll(PDO::FETCH_ASSOC);
-                    foreach ($rows2 as $r) { $items[] = $normalize($r); }
-
-                    $countSql2 = "SELECT COUNT(*) FROM campanhas";
-                    $countStmt2 = $pdo->prepare($countSql2);
-                    $countStmt2->execute();
-                    $total = (int)($countStmt2->fetchColumn() ?: 0);
-                } catch (Exception $e2) {
-                    // Erro real de banco (ex: tabela inexistente)
-                    throw new Exception('Falha ao consultar campanhas no banco: ' . $e2->getMessage());
+                foreach ($rows as $row) {
+                    $responsaveis = [];
+                    if (isset($row['responsaveis'])) {
+                        $tmp = json_decode((string)$row['responsaveis'], true);
+                        if (is_array($tmp)) $responsaveis = $tmp;
+                    }
+                    $items[] = [
+                        'id' => (string)$row['id'],
+                        'name' => (string)($row['name'] ?? ''),
+                        'description' => (string)($row['description'] ?? ''),
+                        'objetivo' => (string)($row['objetivo'] ?? ''),
+                        'leadsCount' => (int)($row['leads_count'] ?? 0),
+                        'script' => (string)($row['script'] ?? ''),
+                        'dataInicio' => (string)($row['data_inicio'] ?? ''),
+                        'dataFim' => (string)($row['data_fim'] ?? ''),
+                        'canal' => $row['canal'] ?? null,
+                        'responsaveis' => $responsaveis,
+                        'mailigs' => [],
+                    ];
                 }
+
+                $countSql = "SELECT COUNT(*) FROM campanhas WHERE (archived IS NULL OR archived = false)";
+                $total = (int)$pdo->query($countSql)->fetchColumn();
+            } catch (Exception $e) {
+                // Em caso de erro inesperado, retorna vazio
+                $items = [];
+                $total = 0;
             }
 
             $hasMore = ($start + $effectiveLimit) < $total;
@@ -259,7 +281,7 @@ try {
             break;
 
         case 'listar-todas':
-            // Mesma lógica de listar, sem token, direto do banco
+            // Mesma lógica de listar, sem token, direto no banco
             $offset = isset($_GET['offset']) ? (int)$_GET['offset'] : 0;
             $page = isset($_GET['page']) ? (int)$_GET['page'] : 0;
             $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 0;
@@ -280,66 +302,49 @@ try {
             $start = ($page > 1) ? (($page - 1) * $effectiveLimit) : $offset;
             if ($start < 0) $start = 0;
 
-            $normalize = function(array $row) {
-                $responsaveis = [];
-                if (isset($row['responsaveis'])) {
-                    if (is_array($row['responsaveis'])) {
-                        $responsaveis = $row['responsaveis'];
-                    } else {
-                        $tmp = json_decode((string)$row['responsaveis'], true);
-                        if (is_array($tmp)) $responsaveis = $tmp; else $responsaveis = [];
-                    }
-                }
-                return [
-                    'id' => (string)($row['id'] ?? $row['campanha_id'] ?? ''),
-                    'name' => (string)($row['name'] ?? $row['nome'] ?? $row['titulo'] ?? ''),
-                    'description' => (string)($row['description'] ?? $row['descricao'] ?? ''),
-                    'objetivo' => (string)($row['objetivo'] ?? $row['goal'] ?? ''),
-                    'leadsCount' => (int)($row['leads_count'] ?? $row['leadsCount'] ?? 0),
-                    'script' => (string)($row['script'] ?? ''),
-                    'dataInicio' => (string)($row['data_inicio'] ?? $row['dataInicio'] ?? ''),
-                    'dataFim' => (string)($row['data_fim'] ?? $row['dataFim'] ?? ''),
-                    'canal' => $row['canal'] ?? null,
-                    'responsaveis' => $responsaveis,
-                    'mailigs' => []
-                ];
-            };
-
             $db = Database::getInstance();
             $pdo = $db->getConnection();
+            ensureCampanhasTable($pdo);
 
             $items = [];
             $total = 0;
             try {
-                $sql = "SELECT id, name, description, objetivo, leads_count, script, data_inicio, data_fim, canal, responsaveis FROM campanhas WHERE (archived IS NULL OR archived = false) ORDER BY COALESCE(created_at, NOW()) DESC LIMIT :limit OFFSET :offset";
+                $sql = "SELECT id, name, description, objetivo, leads_count, script, data_inicio, data_fim, canal, responsaveis, mailigs, created_at
+                        FROM campanhas
+                        WHERE (archived IS NULL OR archived = false)
+                        ORDER BY COALESCE(created_at, NOW()) DESC
+                        LIMIT :limit OFFSET :offset";
                 $stmt = $pdo->prepare($sql);
                 $stmt->bindValue(':limit', (int)$effectiveLimit, PDO::PARAM_INT);
                 $stmt->bindValue(':offset', (int)$start, PDO::PARAM_INT);
                 $stmt->execute();
                 $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-                foreach ($rows as $r) { $items[] = $normalize($r); }
-
-                $countSql = "SELECT COUNT(*) AS c FROM campanhas WHERE (archived IS NULL OR archived = false)";
-                $countStmt = $pdo->prepare($countSql);
-                $countStmt->execute();
-                $total = (int)($countStmt->fetchColumn() ?: 0);
-            } catch (Exception $e1) {
-                try {
-                    $sql2 = "SELECT * FROM campanhas ORDER BY 1 DESC LIMIT :limit OFFSET :offset";
-                    $stmt2 = $pdo->prepare($sql2);
-                    $stmt2->bindValue(':limit', (int)$effectiveLimit, PDO::PARAM_INT);
-                    $stmt2->bindValue(':offset', (int)$start, PDO::PARAM_INT);
-                    $stmt2->execute();
-                    $rows2 = $stmt2->fetchAll(PDO::FETCH_ASSOC);
-                    foreach ($rows2 as $r) { $items[] = $normalize($r); }
-
-                    $countSql2 = "SELECT COUNT(*) FROM campanhas";
-                    $countStmt2 = $pdo->prepare($countSql2);
-                    $countStmt2->execute();
-                    $total = (int)($countStmt2->fetchColumn() ?: 0);
-                } catch (Exception $e2) {
-                    throw new Exception('Falha ao consultar campanhas no banco: ' . $e2->getMessage());
+                foreach ($rows as $row) {
+                    $responsaveis = [];
+                    if (isset($row['responsaveis'])) {
+                        $tmp = json_decode((string)$row['responsaveis'], true);
+                        if (is_array($tmp)) $responsaveis = $tmp;
+                    }
+                    $items[] = [
+                        'id' => (string)$row['id'],
+                        'name' => (string)($row['name'] ?? ''),
+                        'description' => (string)($row['description'] ?? ''),
+                        'objetivo' => (string)($row['objetivo'] ?? ''),
+                        'leadsCount' => (int)($row['leads_count'] ?? 0),
+                        'script' => (string)($row['script'] ?? ''),
+                        'dataInicio' => (string)($row['data_inicio'] ?? ''),
+                        'dataFim' => (string)($row['data_fim'] ?? ''),
+                        'canal' => $row['canal'] ?? null,
+                        'responsaveis' => $responsaveis,
+                        'mailigs' => [],
+                    ];
                 }
+
+                $countSql = "SELECT COUNT(*) FROM campanhas WHERE (archived IS NULL OR archived = false)";
+                $total = (int)$pdo->query($countSql)->fetchColumn();
+            } catch (Exception $e) {
+                $items = [];
+                $total = 0;
             }
 
             $hasMore = ($start + $effectiveLimit) < $total;
@@ -354,7 +359,7 @@ try {
             break;
 
         case 'update':
-            // Atualiza uma campanha existente (PUT/POST)
+            // Atualiza uma campanha existente na tabela (PUT/POST)
             if (!in_array($method, ['PUT', 'POST'])) {
                 $response->error('Método não suportado. Use PUT ou POST.', HTTP_METHOD_NOT_ALLOWED);
             }
@@ -364,34 +369,64 @@ try {
                 $response->validation(['id' => 'ID da campanha é obrigatório'], 'Dados inválidos');
             }
 
-            $storageFile = __DIR__ . '/../storage/campanhas.json';
-            $lista = [];
-            if (file_exists($storageFile)) {
-                $conteudo = file_get_contents($storageFile);
-                $lista = json_decode($conteudo, true);
-                if (!is_array($lista)) $lista = [];
-            }
-            $updated = null;
-            foreach ($lista as &$item) {
-                if (isset($item['id']) && $item['id'] === $input['id']) {
-                    // Merge simples dos campos
-                    foreach ($input as $k => $v) {
-                        if ($k === 'id') continue;
-                        $item[$k] = $v;
+            $db = Database::getInstance();
+            $pdo = $db->getConnection();
+            ensureCampanhasTable($pdo);
+
+            // Campos permitidos para update
+            $fields = [
+                'name', 'description', 'objetivo', 'script',
+                'dataInicio', 'dataFim', 'canal', 'responsaveis', 'mailigs',
+                'leadsCount', 'archived'
+            ];
+            $setParts = [];
+            $params = [':id' => $input['id']];
+            foreach ($fields as $f) {
+                if (array_key_exists($f, $input)) {
+                    switch ($f) {
+                        case 'dataInicio': $col = 'data_inicio'; break;
+                        case 'dataFim': $col = 'data_fim'; break;
+                        case 'leadsCount': $col = 'leads_count'; break;
+                        default: $col = $f; break;
                     }
-                    $updated = $item;
-                    break;
+                    $setParts[] = "$col = :$col";
+                    $val = $input[$f];
+                    if (in_array($f, ['responsaveis','mailigs'])) {
+                        $val = json_encode($val, JSON_UNESCAPED_UNICODE);
+                    }
+                    $params[":$col"] = $val;
                 }
             }
-            if ($updated === null) {
-                $response->error('Campanha não encontrada para atualização', 404);
+            if (empty($setParts)) {
+                $response->validation(['fields' => 'Nenhum campo para atualizar'], 'Dados inválidos');
             }
-            file_put_contents($storageFile, json_encode($lista, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
-            $response->success(['campanha' => $updated], 'Campanha atualizada com sucesso');
+            $sql = "UPDATE campanhas SET " . implode(', ', $setParts) . " WHERE id = :id";
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+
+            // Retorna registro atualizado
+            $stmt2 = $pdo->prepare("SELECT id, name, description, objetivo, leads_count, script, data_inicio, data_fim, canal, responsaveis, mailigs, archived, created_at FROM campanhas WHERE id = :id");
+            $stmt2->execute([':id' => $input['id']]);
+            $row = $stmt2->fetch(PDO::FETCH_ASSOC);
+            if (!$row) { $response->error('Campanha não encontrada após atualização', 404); }
+
+            $resp = [];
+            $resp['id'] = (string)$row['id'];
+            $resp['name'] = (string)($row['name'] ?? '');
+            $resp['description'] = (string)($row['description'] ?? '');
+            $resp['objetivo'] = (string)($row['objetivo'] ?? '');
+            $resp['leadsCount'] = (int)($row['leads_count'] ?? 0);
+            $resp['script'] = (string)($row['script'] ?? '');
+            $resp['dataInicio'] = (string)($row['data_inicio'] ?? '');
+            $resp['dataFim'] = (string)($row['data_fim'] ?? '');
+            $resp['canal'] = $row['canal'] ?? null;
+            $resp['responsaveis'] = json_decode((string)($row['responsaveis'] ?? '[]'), true) ?? [];
+            $resp['mailigs'] = [];
+            $response->success(['campanha' => $resp], 'Campanha atualizada com sucesso');
             break;
 
         case 'delete':
-            // Exclusão/arquivamento (DELETE/POST)
+            // Arquiva campanha (DELETE/POST) no banco
             if (!in_array($method, ['DELETE', 'POST'])) {
                 $response->error('Método não suportado. Use DELETE ou POST.', HTTP_METHOD_NOT_ALLOWED);
             }
@@ -400,25 +435,11 @@ try {
             if (!$input || !is_array($input) || empty($input['id'])) {
                 $response->validation(['id' => 'ID da campanha é obrigatório'], 'Dados inválidos');
             }
-            $storageFile = __DIR__ . '/../storage/campanhas.json';
-            $lista = [];
-            if (file_exists($storageFile)) {
-                $conteudo = file_get_contents($storageFile);
-                $lista = json_decode($conteudo, true);
-                if (!is_array($lista)) $lista = [];
-            }
-            $deleted = false;
-            foreach ($lista as &$item) {
-                if (isset($item['id']) && $item['id'] === $input['id']) {
-                    $item['archived'] = true;
-                    $deleted = true;
-                    break;
-                }
-            }
-            if (!$deleted) {
-                $response->error('Campanha não encontrada para exclusão', 404);
-            }
-            file_put_contents($storageFile, json_encode($lista, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+            $db = Database::getInstance();
+            $pdo = $db->getConnection();
+            ensureCampanhasTable($pdo);
+            $stmt = $pdo->prepare('UPDATE campanhas SET archived = TRUE WHERE id = :id');
+            $stmt->execute([':id' => $input['id']]);
             $response->success(null, 'Campanha arquivada com sucesso');
             break;
 
@@ -431,25 +452,11 @@ try {
             if (!$input || !is_array($input) || empty($input['id'])) {
                 $response->validation(['id' => 'ID da campanha é obrigatório'], 'Dados inválidos');
             }
-            $storageFile = __DIR__ . '/../storage/campanhas.json';
-            $lista = [];
-            if (file_exists($storageFile)) {
-                $conteudo = file_get_contents($storageFile);
-                $lista = json_decode($conteudo, true);
-                if (!is_array($lista)) $lista = [];
-            }
-            $ok = false;
-            foreach ($lista as &$item) {
-                if (isset($item['id']) && $item['id'] === $input['id']) {
-                    $item['archived'] = true;
-                    $ok = true;
-                    break;
-                }
-            }
-            if (!$ok) {
-                $response->error('Campanha não encontrada para arquivar', 404);
-            }
-            file_put_contents($storageFile, json_encode($lista, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+            $db = Database::getInstance();
+            $pdo = $db->getConnection();
+            ensureCampanhasTable($pdo);
+            $stmt = $pdo->prepare('UPDATE campanhas SET archived = TRUE WHERE id = :id');
+            $stmt->execute([':id' => $input['id']]);
             $response->success(null, 'Campanha arquivada com sucesso');
             break;
 
@@ -462,25 +469,11 @@ try {
             if (!$input || !is_array($input) || empty($input['id'])) {
                 $response->validation(['id' => 'ID da campanha é obrigatório'], 'Dados inválidos');
             }
-            $storageFile = __DIR__ . '/../storage/campanhas.json';
-            $lista = [];
-            if (file_exists($storageFile)) {
-                $conteudo = file_get_contents($storageFile);
-                $lista = json_decode($conteudo, true);
-                if (!is_array($lista)) $lista = [];
-            }
-            $ok = false;
-            foreach ($lista as &$item) {
-                if (isset($item['id']) && $item['id'] === $input['id']) {
-                    $item['archived'] = false;
-                    $ok = true;
-                    break;
-                }
-            }
-            if (!$ok) {
-                $response->error('Campanha não encontrada para restaurar', 404);
-            }
-            file_put_contents($storageFile, json_encode($lista, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+            $db = Database::getInstance();
+            $pdo = $db->getConnection();
+            ensureCampanhasTable($pdo);
+            $stmt = $pdo->prepare('UPDATE campanhas SET archived = FALSE WHERE id = :id');
+            $stmt->execute([':id' => $input['id']]);
             $response->success(null, 'Campanha restaurada com sucesso');
             break;
 
