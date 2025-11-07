@@ -135,6 +135,32 @@ try {
             $pdo = $db->getConnection();
             ensureCampanhasTable($pdo);
 
+            // Alocação de contatos por usuário (round-robin) com base em 'responsaveis'
+            $responsaveisInput = isset($input['responsaveis']) && is_array($input['responsaveis']) ? $input['responsaveis'] : [];
+            $responsaveisIds = [];
+            foreach ($responsaveisInput as $r) {
+                if (is_array($r) && isset($r['id'])) {
+                    $responsaveisIds[] = (string)$r['id'];
+                } elseif (is_object($r) && isset($r->id)) {
+                    $responsaveisIds[] = (string)$r->id;
+                }
+            }
+
+            $mailigsAssigned = [];
+            if (!empty($responsaveisIds) && is_array($mailigs)) {
+                $idx = 0;
+                $countResp = count($responsaveisIds);
+                foreach ($mailigs as $m) {
+                    // Garante estrutura de array
+                    if (!is_array($m)) { $m = []; }
+                    $m['responsavel_id'] = $responsaveisIds[$idx % $countResp];
+                    $mailigsAssigned[] = $m;
+                    $idx++;
+                }
+            } else {
+                $mailigsAssigned = is_array($mailigs) ? $mailigs : [];
+            }
+
             $sql = "INSERT INTO public.campanhas (id, name, description, objetivo, script, data_inicio, data_fim, canal, leads_count, responsaveis, mailigs, owner_token, created_at, archived)
                     VALUES (:id, :name, :description, :objetivo, :script, :data_inicio, :data_fim, :canal, :leads_count, :responsaveis, :mailigs, :owner_token, :created_at, FALSE)";
             $stmt = $pdo->prepare($sql);
@@ -150,8 +176,8 @@ try {
             if (is_array($canalVal)) { $canalVal = json_encode($canalVal, JSON_UNESCAPED_UNICODE); }
             $stmt->bindValue(':canal', $canalVal);
             $stmt->bindValue(':leads_count', (int)$leadsCount, PDO::PARAM_INT);
-            $stmt->bindValue(':responsaveis', json_encode($input['responsaveis'] ?? [], JSON_UNESCAPED_UNICODE));
-            $stmt->bindValue(':mailigs', json_encode($mailigs, JSON_UNESCAPED_UNICODE));
+            $stmt->bindValue(':responsaveis', json_encode($responsaveisInput, JSON_UNESCAPED_UNICODE));
+            $stmt->bindValue(':mailigs', json_encode($mailigsAssigned, JSON_UNESCAPED_UNICODE));
             $stmt->bindValue(':owner_token', $ownerToken);
             $stmt->bindValue(':created_at', $createdAt);
             $stmt->execute();
@@ -166,8 +192,8 @@ try {
                 'dataInicio' => (string)($input['dataInicio'] ?? ''),
                 'dataFim' => (string)($input['dataFim'] ?? ''),
                 'canal' => $input['canal'] ?? null,
-                'responsaveis' => $input['responsaveis'] ?? [],
-                'mailigs' => $mailigs,
+                'responsaveis' => $responsaveisInput,
+                'mailigs' => $mailigsAssigned,
                 'ownerToken' => $ownerToken,
                 'createdAt' => $createdAt,
             ];
@@ -194,12 +220,18 @@ try {
                     $page = isset($input['page']) ? (int)$input['page'] : $page;
                     $limit = isset($input['limit']) ? (int)$input['limit'] : $limit;
                     $perPage = isset($input['per_page']) ? (int)$input['per_page'] : $perPage;
+                    $usuarioId = isset($input['usuario_id']) ? trim((string)$input['usuario_id']) : '';
                 }
             }
 
             $effectiveLimit = $perPage > 0 ? $perPage : ($limit > 0 ? $limit : 10);
             $start = ($page > 1) ? (($page - 1) * $effectiveLimit) : $offset;
             if ($start < 0) $start = 0;
+
+            // Suporte a filtro por usuário participante
+            if (!isset($usuarioId)) {
+                $usuarioId = isset($_GET['usuario_id']) ? trim((string)$_GET['usuario_id']) : '';
+            }
 
             // Função helper para normalizar linhas em objetos esperados pelo app
             $normalize = function(array $row) {
@@ -253,6 +285,17 @@ try {
                         $tmp = json_decode((string)$row['responsaveis'], true);
                         if (is_array($tmp)) $responsaveis = $tmp;
                     }
+                    // Se solicitado, filtra campanhas em que o usuário participa
+                    if ($usuarioId !== '') {
+                        $participa = false;
+                        foreach ($responsaveis as $r) {
+                            $rid = '';
+                            if (is_array($r) && isset($r['id'])) { $rid = (string)$r['id']; }
+                            elseif (is_object($r) && isset($r->id)) { $rid = (string)$r->id; }
+                            if ($rid !== '' && $rid === $usuarioId) { $participa = true; break; }
+                        }
+                        if (!$participa) { continue; }
+                    }
                     $items[] = [
                         'id' => (string)$row['id'],
                         'name' => (string)($row['name'] ?? ''),
@@ -302,12 +345,18 @@ try {
                     $page = isset($input['page']) ? (int)$input['page'] : $page;
                     $limit = isset($input['limit']) ? (int)$input['limit'] : $limit;
                     $perPage = isset($input['per_page']) ? (int)$input['per_page'] : $perPage;
+                    $usuarioId = isset($input['usuario_id']) ? trim((string)$input['usuario_id']) : '';
                 }
             }
 
             $effectiveLimit = $perPage > 0 ? $perPage : ($limit > 0 ? $limit : 10);
             $start = ($page > 1) ? (($page - 1) * $effectiveLimit) : $offset;
             if ($start < 0) $start = 0;
+
+            // Suporte a filtro por usuário participante
+            if (!isset($usuarioId)) {
+                $usuarioId = isset($_GET['usuario_id']) ? trim((string)$_GET['usuario_id']) : '';
+            }
 
             $db = Database::getInstance();
             $pdo = $db->getConnection();
@@ -331,6 +380,16 @@ try {
                     if (isset($row['responsaveis'])) {
                         $tmp = json_decode((string)$row['responsaveis'], true);
                         if (is_array($tmp)) $responsaveis = $tmp;
+                    }
+                    if ($usuarioId !== '') {
+                        $participa = false;
+                        foreach ($responsaveis as $r) {
+                            $rid = '';
+                            if (is_array($r) && isset($r['id'])) { $rid = (string)$r['id']; }
+                            elseif (is_object($r) && isset($r->id)) { $rid = (string)$r->id; }
+                            if ($rid !== '' && $rid === $usuarioId) { $participa = true; break; }
+                        }
+                        if (!$participa) { continue; }
                     }
                     $items[] = [
                         'id' => (string)$row['id'],
@@ -494,6 +553,7 @@ try {
             $id = isset($_GET['id']) ? trim((string)$_GET['id']) : '';
             $offset = isset($_GET['offset']) ? (int)$_GET['offset'] : 0;
             $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 20;
+            $usuarioId = isset($_GET['usuario_id']) ? trim((string)$_GET['usuario_id']) : '';
 
             if ($method === 'POST') {
                 $raw = file_get_contents('php://input');
@@ -502,6 +562,7 @@ try {
                     $id = isset($input['id']) ? trim((string)$input['id']) : $id;
                     $offset = isset($input['offset']) ? (int)$input['offset'] : $offset;
                     $limit = isset($input['limit']) ? (int)$input['limit'] : $limit;
+                    $usuarioId = isset($input['usuario_id']) ? trim((string)$input['usuario_id']) : $usuarioId;
                 }
             }
 
@@ -536,6 +597,20 @@ try {
                 if ($offset < 0) $offset = 0;
                 if ($limit <= 0) $limit = 20;
                 if ($offset > $total) { $offset = $total; }
+                // Se usuário foi informado, filtra os itens atribuídos a ele
+                if ($usuarioId !== '') {
+                    $mailigsArr = array_values(array_filter($mailigsArr, function($m) use ($usuarioId) {
+                        if (is_array($m)) {
+                            $rid = isset($m['responsavel_id']) ? (string)$m['responsavel_id'] : '';
+                            return $rid !== '' && $rid === $usuarioId;
+                        } elseif (is_object($m)) {
+                            $rid = isset($m->responsavel_id) ? (string)$m->responsavel_id : '';
+                            return $rid !== '' && $rid === $usuarioId;
+                        }
+                        return false;
+                    }));
+                }
+
                 $items = array_slice($mailigsArr, $offset, $limit);
 
                 $response->success([
