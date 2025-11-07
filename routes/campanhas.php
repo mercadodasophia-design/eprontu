@@ -484,6 +484,72 @@ try {
             $response->success(null, 'Campanha restaurada com sucesso');
             break;
 
+        case 'contatos':
+            // Lista os contatos (mailigs) vinculados a uma campanha específica
+            // Aceita GET ou POST com parâmetros: id (obrigatório), offset, limit
+            if (!in_array($method, ['GET', 'POST'])) {
+                $response->error('Método não suportado. Use GET ou POST.', HTTP_METHOD_NOT_ALLOWED);
+            }
+
+            $id = isset($_GET['id']) ? trim((string)$_GET['id']) : '';
+            $offset = isset($_GET['offset']) ? (int)$_GET['offset'] : 0;
+            $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 20;
+
+            if ($method === 'POST') {
+                $raw = file_get_contents('php://input');
+                $input = json_decode($raw, true);
+                if (is_array($input)) {
+                    $id = isset($input['id']) ? trim((string)$input['id']) : $id;
+                    $offset = isset($input['offset']) ? (int)$input['offset'] : $offset;
+                    $limit = isset($input['limit']) ? (int)$input['limit'] : $limit;
+                }
+            }
+
+            if ($id === '') {
+                $response->validation(['id' => 'ID da campanha é obrigatório'], 'Dados inválidos');
+            }
+
+            $db = Database::getInstance();
+            $pdo = $db->getConnection();
+            ensureCampanhasTable($pdo);
+
+            try {
+                $stmt = $pdo->prepare("SELECT mailigs, leads_count FROM public.campanhas WHERE id = :id LIMIT 1");
+                $stmt->execute([':id' => $id]);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                if (!$row) {
+                    $response->success([
+                        'items' => [],
+                        'offset' => 0,
+                        'limit' => $limit,
+                        'total' => 0,
+                        'id' => $id
+                    ], 'Campanha não encontrada');
+                }
+
+                $mailigsJson = (string)($row['mailigs'] ?? '[]');
+                $mailigsArr = json_decode($mailigsJson, true);
+                if (!is_array($mailigsArr)) { $mailigsArr = []; }
+
+                $total = count($mailigsArr);
+                if ($offset < 0) $offset = 0;
+                if ($limit <= 0) $limit = 20;
+                if ($offset > $total) { $offset = $total; }
+                $items = array_slice($mailigsArr, $offset, $limit);
+
+                $response->success([
+                    'items' => $items,
+                    'offset' => $offset,
+                    'limit' => $limit,
+                    'total' => $total,
+                    'id' => $id,
+                ], 'Contatos da campanha listados com sucesso');
+            } catch (Exception $e) {
+                $response->error('Falha ao consultar contatos: ' . $e->getMessage(), 500);
+            }
+            break;
+
         default:
             $response->error('Ação de campanhas não suportada: ' . $action, 404);
     }
