@@ -17,6 +17,22 @@ if (!isset($method) || !isset($segments)) {
     $action = $segments[1] ?? '';
 }
 
+// Se a ação for 'interacoes', não processar aqui (já foi roteado no index.php)
+// Verificar também pelos segments diretamente
+$isInteracoes = false;
+if (isset($action) && $action === 'interacoes') {
+    $isInteracoes = true;
+} elseif (isset($segments) && isset($segments[1]) && $segments[1] === 'interacoes') {
+    $isInteracoes = true;
+}
+
+if ($isInteracoes) {
+    // Não fazer nada, já foi roteado para campanhas_interacoes.php
+    http_response_code(404);
+    echo json_encode(['success' => false, 'message' => 'Esta rota foi redirecionada para campanhas_interacoes.php']);
+    exit;
+}
+
 $action = $action ?? '';
 
 // Cria a tabela de campanhas caso não exista (PostgreSQL)

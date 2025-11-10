@@ -16,10 +16,11 @@ if (!isset($method) || !isset($segments)) {
     if (isset($segments[0]) && $segments[0] === 'e-prontu') array_shift($segments);
     if (isset($segments[0]) && $segments[0] === 'api') array_shift($segments);
     // Para /api/campanhas/interacoes/{acao}, a ação está em $segments[2]
-    $action = $segments[2] ?? '';
+    $action = isset($segments[2]) ? $segments[2] : '';
 } else {
     // Se $segments já existe, pegar ação do índice correto
-    $action = $segments[2] ?? '';
+    // Para /api/campanhas/interacoes/{acao}, segments[0]='campanhas', segments[1]='interacoes', segments[2]='{acao}'
+    $action = isset($segments[2]) ? $segments[2] : '';
 }
 
 $action = $action ?? '';
@@ -60,6 +61,10 @@ function ensureInteracoesTable(PDO $pdo) {
         // Se não conseguir criar/verificar, seguir em frente
     }
 }
+
+// Debug: verificar ação recebida
+// error_log("campanhas_interacoes.php - action recebida: " . $action);
+// error_log("campanhas_interacoes.php - segments: " . json_encode($segments ?? []));
 
 try {
     switch ($action) {
@@ -429,7 +434,14 @@ try {
             break;
 
         default:
-            $response->error('Ação de interações não suportada: ' . $action, 404);
+            // Debug: mostrar ação recebida e segments para diagnóstico
+            $debugInfo = [
+                'action' => $action,
+                'segments' => $segments ?? [],
+                'method' => $method ?? 'GET',
+                'uri' => $_SERVER['REQUEST_URI'] ?? '',
+            ];
+            $response->error('Ação de interações não suportada: ' . ($action ?: 'vazio') . ' | Debug: ' . json_encode($debugInfo), 404);
     }
 } catch (Exception $e) {
     $response->error('Erro na rota interações: ' . $e->getMessage(), 500);

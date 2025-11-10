@@ -252,14 +252,16 @@ try {
 
         case 'campanhas':
             // Verificar se é uma ação de interações
-            $action = $segments[1] ?? '';
-            $subAction = $segments[2] ?? '';
+            // Para /api/campanhas/interacoes/{acao}, segments[1] = 'interacoes'
+            $campanhaAction = $segments[1] ?? '';
             
-            if ($subAction === 'interacoes') {
+            if ($campanhaAction === 'interacoes') {
                 // Rota para interações: /api/campanhas/interacoes/{acao}
+                // A ação específica (salvar, historico, etc) está em $segments[2]
                 require_once 'routes/campanhas_interacoes.php';
             } else {
                 // Rota padrão de campanhas
+                // A ação está em $segments[1] (listar, add, update, etc)
                 require_once 'routes/campanhas.php';
             }
             break;
