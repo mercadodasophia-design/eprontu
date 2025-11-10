@@ -251,7 +251,17 @@ try {
             break;
 
         case 'campanhas':
-            require_once 'routes/campanhas.php';
+            // Verificar se é uma ação de interações
+            $action = $segments[1] ?? '';
+            $subAction = $segments[2] ?? '';
+            
+            if ($subAction === 'interacoes') {
+                // Rota para interações: /api/campanhas/interacoes/{acao}
+                require_once 'routes/campanhas_interacoes.php';
+            } else {
+                // Rota padrão de campanhas
+                require_once 'routes/campanhas.php';
+            }
             break;
             
         case 'bobina-timeline':
