@@ -363,14 +363,11 @@ try {
     error_log('Erro em fila_espera.php: ' . $e->getMessage());
     error_log('Stack trace: ' . $e->getTraceAsString());
     
-    // Retornar erro detalhado
-    header('Content-Type: application/json');
-    http_response_code(500);
-    echo json_encode([
-        'status' => 'erro',
-        'dados' => 'Erro: ' . $e->getMessage() . ' | Arquivo: ' . $e->getFile() . ' | Linha: ' . $e->getLine()
-    ], JSON_UNESCAPED_UNICODE);
-    exit;
+    // Usar a classe Response para padronizar o formato de erro
+    $response->error(
+        'Erro: ' . $e->getMessage() . ' | Arquivo: ' . $e->getFile() . ' | Linha: ' . $e->getLine(),
+        500
+    );
 }
 
 /**
