@@ -271,6 +271,8 @@ try {
             break;
             
         case 'fila-espera':
+            // Remover 'fila-espera' dos segments para o arquivo de rotas processar
+            array_shift($segments);
             require_once 'routes/fila_espera.php';
             break;
                    

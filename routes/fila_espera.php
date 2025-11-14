@@ -18,11 +18,24 @@ if (!isset($segments)) {
     if (isset($segments[0]) && $segments[0] === 'e-prontu') array_shift($segments);
     if (isset($segments[0]) && $segments[0] === 'api') array_shift($segments);
     if (isset($segments[0]) && $segments[0] === 'fila-espera') array_shift($segments);
+} else {
+    // Se $segments foi passado pelo index.php, garantir que 'fila-espera' foi removido
+    if (isset($segments[0]) && $segments[0] === 'fila-espera') {
+        array_shift($segments);
+    }
 }
 
-$method = $_SERVER['REQUEST_METHOD'];
+// Se $method não estiver definido, obter do $_SERVER
+if (!isset($method)) {
+    $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+}
+
+// A ação está no primeiro segmento (já removido 'fila-espera' pelo index.php)
 $action = $segments[0] ?? '';
 $id = $segments[1] ?? null;
+
+// Debug: log para verificar o que está sendo recebido
+error_log('Fila Espera - Action: ' . $action . ' | ID: ' . ($id ?? 'null') . ' | Method: ' . $method . ' | Segments: ' . json_encode($segments));
 
 try {
     switch ($action) {
