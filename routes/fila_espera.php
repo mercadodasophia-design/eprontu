@@ -333,33 +333,25 @@ try {
                 $params[] = $_GET['prioridade'];
             }
 
-            $whereClause = !empty($where) ? 'WHERE ' . implode(' AND ', $where) : '';
-
-            // Buscar filas com dados do paciente, procedimento, especialidade, unidade e médico
-            $sql = "SELECT 
-                        fe.*,
-                        f.descricao as fila_descricao,
-                        f.cor as fila_cor,
-                        f.tipo_fila as fila_tipo_fila,
-                        p.nome as paciente_nome,
-                        p.cpf as paciente_cpf,
-                        p.datanascimento as paciente_datanascimento,
-                        p.sexo as paciente_sexo,
-                        p.idade as paciente_idade,
-                        proc.descricaoprocedimento as procedimento_descricao,
-                        e.especialidade as especialidade_descricao,
-                        u.des_unidade as unidade_descricao,
-                        m.des_profissional as medico_nome,
-                        m.crm as medico_crm
-                    FROM fila_espera fe
-                    LEFT JOIN filas f ON fe.fila_id = f.id
-                    LEFT JOIN paciente p ON fe.paciente_id = p.codpaciente
-                    LEFT JOIN procedimentos proc ON fe.procedimento_id::text = proc.codprocedimento::text
-                    LEFT JOIN especialidades e ON fe.especialidade_id = e.codespecialidade
-                    LEFT JOIN unidades u ON fe.unidade_id = u.cod_unidade
-                    LEFT JOIN medicos m ON fe.medico_solicitante_id = m.cod_profissional
-                    $whereClause
-                    ORDER BY fe.data_entrada_fila ASC";
+            // Ajustar WHERE para usar apenas fe.* quando não há filtros de tipo
+            $whereClause = '';
+            if (!empty($where)) {
+                // Se tem filtro de tipo, precisa do JOIN com filas
+                if (isset($_GET['tipo_fila'])) {
+                    $whereClause = 'WHERE ' . implode(' AND ', $where);
+                    $sql = "SELECT fe.*, f.descricao as fila_descricao, f.cor as fila_cor, f.tipo_fila as fila_tipo_fila
+                            FROM fila_espera fe
+                            LEFT JOIN filas f ON fe.fila_id = f.id
+                            $whereClause
+                            ORDER BY fe.data_entrada_fila ASC";
+                } else {
+                    // Sem filtro de tipo, não precisa do JOIN
+                    $whereClause = 'WHERE ' . implode(' AND ', $where);
+                    $sql = "SELECT fe.* FROM fila_espera fe $whereClause ORDER BY fe.data_entrada_fila ASC";
+                }
+            } else {
+                $sql = "SELECT fe.* FROM fila_espera fe ORDER BY fe.data_entrada_fila ASC";
+            }
 
             try {
                 $filas = $db->fetchAll($sql, $params);
@@ -379,18 +371,109 @@ try {
             // Formatar resposta com objetos aninhados
             $filasFormatadas = [];
             foreach ($filas as $fila) {
-                // Calcular idade se não vier preenchida
-                $idade = '';
-                if (!empty($fila['paciente_idade'])) {
-                    $idade = (string)$fila['paciente_idade'];
-                } elseif (!empty($fila['paciente_datanascimento'])) {
+                // Buscar dados relacionados de forma segura
+                $pacienteNome = 'Paciente ' . ($fila['paciente_id'] ?? '');
+                $pacienteCpf = '';
+                $pacienteDataNasc = '';
+                $pacienteIdade = '';
+                $pacienteSexo = '';
+                
+                $procedimentoDesc = 'Procedimento ' . ($fila['procedimento_id'] ?? '');
+                $especialidadeDesc = 'Especialidade ' . ($fila['especialidade_id'] ?? '');
+                $unidadeDesc = 'Unidade ' . ($fila['unidade_id'] ?? '');
+                $medicoNome = 'Médico ' . ($fila['medico_solicitante_id'] ?? '');
+                $medicoCrm = '';
+                
+                $filaDesc = 'Fila ' . ($fila['fila_id'] ?? '');
+                $filaCor = 4280391411;
+                $filaTipo = 'consulta';
+                
+                // Buscar dados do paciente se possível
+                if (!empty($fila['paciente_id'])) {
                     try {
-                        $dataNasc = new DateTime($fila['paciente_datanascimento']);
-                        $hoje = new DateTime();
-                        $idadeCalculada = $hoje->diff($dataNasc)->y;
-                        $idade = (string)$idadeCalculada;
+                        $pacienteData = $db->fetchOne("SELECT nome, cpf, datanascimento, sexo, idade FROM paciente WHERE codpaciente = ?", [$fila['paciente_id']]);
+                        if ($pacienteData) {
+                            $pacienteNome = $pacienteData['nome'] ?? $pacienteNome;
+                            $pacienteCpf = $pacienteData['cpf'] ?? '';
+                            $pacienteDataNasc = $pacienteData['datanascimento'] ?? '';
+                            $pacienteSexo = $pacienteData['sexo'] ?? '';
+                            $pacienteIdade = $pacienteData['idade'] ?? '';
+                            
+                            // Calcular idade se não vier preenchida
+                            if (empty($pacienteIdade) && !empty($pacienteDataNasc)) {
+                                try {
+                                    $dataNasc = new DateTime($pacienteDataNasc);
+                                    $hoje = new DateTime();
+                                    $pacienteIdade = (string)$hoje->diff($dataNasc)->y;
+                                } catch (Exception $e) {
+                                    // Ignora erro
+                                }
+                            }
+                        }
                     } catch (Exception $e) {
-                        $idade = '';
+                        // Ignora erro, usa valores padrão
+                    }
+                }
+                
+                // Buscar dados da fila
+                if (!empty($fila['fila_id'])) {
+                    try {
+                        $filaData = $db->fetchOne("SELECT descricao, cor, tipo_fila FROM filas WHERE id = ?", [$fila['fila_id']]);
+                        if ($filaData) {
+                            $filaDesc = $filaData['descricao'] ?? $filaDesc;
+                            $filaCor = $filaData['cor'] ?? $filaCor;
+                            $filaTipo = $filaData['tipo_fila'] ?? $filaTipo;
+                        }
+                    } catch (Exception $e) {
+                        // Ignora erro
+                    }
+                }
+                
+                // Buscar descrição do procedimento
+                if (!empty($fila['procedimento_id'])) {
+                    try {
+                        $procData = $db->fetchOne("SELECT descricaoprocedimento FROM procedimentos WHERE codprocedimento::text = ?", [$fila['procedimento_id']]);
+                        if ($procData) {
+                            $procedimentoDesc = $procData['descricaoprocedimento'] ?? $procedimentoDesc;
+                        }
+                    } catch (Exception $e) {
+                        // Ignora erro
+                    }
+                }
+                
+                // Buscar descrição da especialidade
+                if (!empty($fila['especialidade_id'])) {
+                    try {
+                        $espData = $db->fetchOne("SELECT especialidade FROM especialidades WHERE codespecialidade = ?", [$fila['especialidade_id']]);
+                        if ($espData) {
+                            $especialidadeDesc = $espData['especialidade'] ?? $especialidadeDesc;
+                        }
+                    } catch (Exception $e) {
+                        // Ignora erro
+                    }
+                }
+                
+                // Buscar descrição da unidade
+                if (!empty($fila['unidade_id'])) {
+                    try {
+                        $unidData = $db->fetchOne("SELECT unidades FROM unidades WHERE codunidades = ?", [$fila['unidade_id']]);
+                        if ($unidData) {
+                            $unidadeDesc = $unidData['unidades'] ?? $unidadeDesc;
+                        }
+                    } catch (Exception $e) {
+                        // Ignora erro
+                    }
+                }
+                
+                // Buscar dados do médico (tabela profissionais, não medicos)
+                if (!empty($fila['medico_solicitante_id'])) {
+                    try {
+                        $medData = $db->fetchOne("SELECT profissional FROM profissionais WHERE codprofissional = ?", [$fila['medico_solicitante_id']]);
+                        if ($medData) {
+                            $medicoNome = $medData['profissional'] ?? $medicoNome;
+                        }
+                    } catch (Exception $e) {
+                        // Ignora erro
                     }
                 }
                 
@@ -423,36 +506,36 @@ try {
                     // Objetos aninhados
                     'fila' => [
                         'id' => $fila['fila_id'] ?? null,
-                        'descricao' => !empty($fila['fila_descricao']) ? $fila['fila_descricao'] : 'Fila ' . ($fila['fila_id'] ?? ''),
-                        'cor' => $fila['fila_cor'] ?? 4280391411,
-                        'tipoFila' => $fila['fila_tipo_fila'] ?? 'consulta',
+                        'descricao' => $filaDesc,
+                        'cor' => $filaCor,
+                        'tipoFila' => $filaTipo,
                     ],
                     'paciente' => [
                         'id' => $fila['paciente_id'] ?? null,
-                        'nome' => !empty($fila['paciente_nome']) ? $fila['paciente_nome'] : 'Paciente ' . ($fila['paciente_id'] ?? ''),
-                        'cpf' => $fila['paciente_cpf'] ?? '',
-                        'datanascimento' => $fila['paciente_datanascimento'] ?? '',
-                        'idade' => $idade,
-                        'sexo' => $fila['paciente_sexo'] ?? '',
+                        'nome' => $pacienteNome,
+                        'cpf' => $pacienteCpf,
+                        'datanascimento' => $pacienteDataNasc,
+                        'idade' => $pacienteIdade,
+                        'sexo' => $pacienteSexo,
                     ],
                     'procedimento' => [
                         'codprocedimento' => $fila['procedimento_id'] ?? null,
-                        'descricaoprocedimento' => !empty($fila['procedimento_descricao']) ? $fila['procedimento_descricao'] : 'Procedimento ' . ($fila['procedimento_id'] ?? ''),
+                        'descricaoprocedimento' => $procedimentoDesc,
                     ],
                     'especialidade' => [
                         'codespecialidade' => $fila['especialidade_id'] ?? null,
-                        'especialidade' => !empty($fila['especialidade_descricao']) ? $fila['especialidade_descricao'] : 'Especialidade ' . ($fila['especialidade_id'] ?? ''),
+                        'especialidade' => $especialidadeDesc,
                         'ativo' => true,
                         'id' => $fila['especialidade_id'] ?? null,
                     ],
                     'unidade' => [
                         'cod_unidade' => $fila['unidade_id'] ?? null,
-                        'des_unidade' => !empty($fila['unidade_descricao']) ? $fila['unidade_descricao'] : 'Unidade ' . ($fila['unidade_id'] ?? ''),
+                        'des_unidade' => $unidadeDesc,
                     ],
                     'medico_solicitante' => [
                         'cod_profissional' => $fila['medico_solicitante_id'] ?? null,
-                        'des_profissional' => !empty($fila['medico_nome']) ? $fila['medico_nome'] : 'Médico ' . ($fila['medico_solicitante_id'] ?? ''),
-                        'crm' => $fila['medico_crm'] ?? '',
+                        'des_profissional' => $medicoNome,
+                        'crm' => $medicoCrm,
                     ],
                 ];
             }
