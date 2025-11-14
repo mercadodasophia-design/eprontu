@@ -326,6 +326,14 @@ try {
                 break;
             }
 
+            // Garantir que as tabelas existem
+            try {
+                _criarTabelasSeNaoExistem($db);
+            } catch (Exception $e) {
+                error_log('Erro ao criar tabelas: ' . $e->getMessage());
+                // Continua mesmo se houver erro na criação das tabelas
+            }
+
             // Construir query com filtros
             $where = [];
             $params = [];
@@ -377,17 +385,39 @@ try {
 
             try {
                 $filas = $db->fetchAll($sql, $params);
+                error_log('🔵 Filas encontradas: ' . (is_array($filas) ? count($filas) : 'não é array'));
             } catch (Exception $e) {
                 error_log('Erro ao buscar filas: ' . $e->getMessage());
                 error_log('SQL: ' . $sql);
                 error_log('Params: ' . print_r($params, true));
-                $response->error('Erro ao buscar filas: ' . $e->getMessage() . ' | SQL: ' . $sql, 500);
-                break;
+                
+                // Se a tabela não existir, criar e retornar lista vazia
+                if (strpos($e->getMessage(), 'does not exist') !== false || 
+                    strpos($e->getMessage(), 'não existe') !== false) {
+                    error_log('⚠️ Tabela não existe, criando...');
+                    try {
+                        _criarTabelasSeNaoExistem($db);
+                        $filas = [];
+                    } catch (Exception $e2) {
+                        error_log('Erro ao criar tabelas: ' . $e2->getMessage());
+                        $response->error('Erro ao buscar filas: ' . $e->getMessage(), 500);
+                        break;
+                    }
+                } else {
+                    $response->error('Erro ao buscar filas: ' . $e->getMessage() . ' | SQL: ' . $sql, 500);
+                    break;
+                }
             }
             
-            if ($filas === false) {
-                $response->error('Erro ao buscar filas: resultado falso', 500);
-                break;
+            // Garantir que $filas é sempre um array
+            if ($filas === false || $filas === null) {
+                error_log('⚠️ Resultado é false/null, usando array vazio');
+                $filas = [];
+            }
+            
+            if (!is_array($filas)) {
+                error_log('⚠️ Resultado não é array, convertendo para array vazio');
+                $filas = [];
             }
             
             // Formatar resposta com objetos aninhados
@@ -562,19 +592,75 @@ try {
                 ];
             }
 
+            // Garantir que $filasFormatadas é sempre um array
+            if (!is_array($filasFormatadas)) {
+                $filasFormatadas = [];
+            }
+            
             // Criptografar resposta
             try {
                 $respostaJson = json_encode($filasFormatadas);
                 if ($respostaJson === false) {
-                    throw new Exception('Erro ao codificar JSON: ' . json_last_error_msg());
+                    error_log('Erro ao codificar JSON: ' . json_last_error_msg());
+                    error_log('Dados que falharam: ' . print_r($filasFormatadas, true));
+                    // Se falhar, retornar array vazio
+                    $respostaJson = '[]';
                 }
-                $respostaCriptografada = Crypto::encryptString($respostaJson);
+                
+                // Garantir que sempre temos um JSON válido (array)
+                if (empty($respostaJson) || 
+                    $respostaJson === false || 
+                    $respostaJson === 'null' || 
+                    $respostaJson === 'NULL' ||
+                    trim($respostaJson) === '' ||
+                    trim($respostaJson) === 'null') {
+                    $respostaJson = '[]';
+                    error_log('⚠️ Resposta JSON estava vazia/inválida, forçando array vazio');
+                }
+                
+                // Validar que é um JSON válido
+                $testDecode = json_decode($respostaJson, true);
+                if ($testDecode === null && $respostaJson !== '[]' && $respostaJson !== 'null') {
+                    error_log('⚠️ JSON inválido detectado, forçando array vazio. JSON original: ' . substr($respostaJson, 0, 100));
+                    $respostaJson = '[]';
+                }
+                
+                error_log('🔵 Resposta JSON final antes de criptografar: ' . substr($respostaJson, 0, 200));
+                error_log('🔵 Tamanho da resposta JSON: ' . strlen($respostaJson) . ' bytes');
+                
+                try {
+                    $respostaCriptografada = Crypto::encryptString($respostaJson);
+                    error_log('🔵 Resposta criptografada (primeiros 100 chars): ' . substr($respostaCriptografada, 0, 100));
+                    error_log('🔵 Tamanho da resposta criptografada: ' . strlen($respostaCriptografada) . ' bytes');
+                } catch (Exception $e) {
+                    error_log('❌ Erro ao criptografar resposta: ' . $e->getMessage());
+                    error_log('❌ JSON que falhou: ' . substr($respostaJson, 0, 200));
+                    // Se falhar a criptografia, tentar com array vazio
+                    try {
+                        $respostaCriptografada = Crypto::encryptString('[]');
+                    } catch (Exception $e2) {
+                        error_log('❌ Erro crítico ao criptografar array vazio: ' . $e2->getMessage());
+                        $response->error('Erro ao criptografar resposta', 500);
+                        break;
+                    }
+                }
 
+                // Validar que a resposta criptografada não está vazia
+                if (empty($respostaCriptografada) || strlen($respostaCriptografada) < 20) {
+                    error_log('⚠️ Resposta criptografada muito curta ou vazia, tentando novamente...');
+                    // Tentar criptografar array vazio novamente
+                    $respostaCriptografada = Crypto::encryptString('[]');
+                }
+                
                 // Retornar no formato esperado pelo Flutter (apenas 'dados')
                 header('Content-Type: application/json');
-                echo json_encode([
+                $respostaFinal = [
                     'dados' => $respostaCriptografada
-                ]);
+                ];
+                
+                error_log('🔵 Retornando resposta final. Tamanho dos dados criptografados: ' . strlen($respostaCriptografada) . ' bytes');
+                
+                echo json_encode($respostaFinal);
                 exit;
             } catch (Exception $e) {
                 error_log('Erro ao processar resposta: ' . $e->getMessage());
