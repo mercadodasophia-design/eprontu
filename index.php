@@ -269,6 +269,10 @@ try {
         case 'bobina-timeline':
             require_once 'routes/bobina_timeline.php';
             break;
+            
+        case 'fila-espera':
+            require_once 'routes/fila_espera.php';
+            break;
                    
                case 'especialidades':
                    // GET /api/especialidades
