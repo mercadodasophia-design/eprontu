@@ -335,15 +335,114 @@ try {
 
             $whereClause = !empty($where) ? 'WHERE ' . implode(' AND ', $where) : '';
 
-            $sql = "SELECT fe.* FROM fila_espera fe
+            // Buscar filas com dados do paciente, procedimento, especialidade, unidade e médico
+            $sql = "SELECT 
+                        fe.*,
+                        f.descricao as fila_descricao,
+                        f.cor as fila_cor,
+                        f.tipo_fila as fila_tipo_fila,
+                        p.nome as paciente_nome,
+                        p.cpf as paciente_cpf,
+                        p.datanascimento as paciente_datanascimento,
+                        p.sexo as paciente_sexo,
+                        p.idade as paciente_idade,
+                        proc.descricaoprocedimento as procedimento_descricao,
+                        e.especialidade as especialidade_descricao,
+                        u.des_unidade as unidade_descricao,
+                        m.des_profissional as medico_nome,
+                        m.crm as medico_crm
+                    FROM fila_espera fe
                     LEFT JOIN filas f ON fe.fila_id = f.id
+                    LEFT JOIN paciente p ON fe.paciente_id = p.codpaciente
+                    LEFT JOIN procedimentos proc ON fe.procedimento_id = proc.cod_procedimento
+                    LEFT JOIN especialidades e ON fe.especialidade_id = e.codespecialidade
+                    LEFT JOIN unidades u ON fe.unidade_id = u.cod_unidade
+                    LEFT JOIN medicos m ON fe.medico_solicitante_id = m.cod_profissional
                     $whereClause
                     ORDER BY fe.data_entrada_fila ASC";
 
             $filas = $db->fetchAll($sql, $params);
+            
+            // Formatar resposta com objetos aninhados
+            $filasFormatadas = array_map(function($fila) {
+                return [
+                    'id' => $fila['id'],
+                    'fila_id' => $fila['fila_id'],
+                    'paciente_id' => $fila['paciente_id'],
+                    'procedimento_id' => $fila['procedimento_id'],
+                    'especialidade_id' => $fila['especialidade_id'],
+                    'unidade_id' => $fila['unidade_id'],
+                    'medico_solicitante_id' => $fila['medico_solicitante_id'],
+                    'usuario_regulador_id' => $fila['usuario_regulador_id'],
+                    'status' => $fila['status'],
+                    'prioridade' => $fila['prioridade'],
+                    'pontuacao_clinica' => $fila['pontuacao_clinica'],
+                    'data_solicitacao' => $fila['data_solicitacao'],
+                    'data_prazo' => $fila['data_prazo'],
+                    'data_regulacao' => $fila['data_regulacao'],
+                    'data_agendamento' => $fila['data_agendamento'],
+                    'data_previsao_atendimento' => $fila['data_previsao_atendimento'],
+                    'data_conclusao' => $fila['data_conclusao'],
+                    'data_entrada_fila' => $fila['data_entrada_fila'],
+                    'motivo_clinico' => $fila['motivo_clinico'],
+                    'observacoes_regulacao' => $fila['observacoes_regulacao'],
+                    'documentos_anexos' => $fila['documentos_anexos'],
+                    'posicao_fila' => $fila['posicao_fila'],
+                    'tempo_espera_estimado' => $fila['tempo_espera_estimado'],
+                    'created_at' => $fila['created_at'],
+                    'updated_at' => $fila['updated_at'],
+                    // Objetos aninhados
+                    'fila' => [
+                        'id' => $fila['fila_id'],
+                        'descricao' => $fila['fila_descricao'] ?? 'Fila ' . $fila['fila_id'],
+                        'cor' => $fila['fila_cor'] ?? 4280391411,
+                        'tipoFila' => $fila['fila_tipo_fila'] ?? 'consulta',
+                    ],
+                    'paciente' => [
+                        'id' => $fila['paciente_id'],
+                        'nome' => !empty($fila['paciente_nome']) ? $fila['paciente_nome'] : 'Paciente ' . $fila['paciente_id'],
+                        'cpf' => $fila['paciente_cpf'] ?? '',
+                        'datanascimento' => $fila['paciente_datanascimento'] ?? '',
+                        'idade' => !empty($fila['paciente_idade']) ? $fila['paciente_idade'] : (function() use ($fila) {
+                            // Calcular idade a partir da data de nascimento se não vier preenchida
+                            if (!empty($fila['paciente_datanascimento'])) {
+                                try {
+                                    $dataNasc = new DateTime($fila['paciente_datanascimento']);
+                                    $hoje = new DateTime();
+                                    $idade = $hoje->diff($dataNasc)->y;
+                                    return (string)$idade;
+                                } catch (Exception $e) {
+                                    return '';
+                                }
+                            }
+                            return '';
+                        })(),
+                        'sexo' => $fila['paciente_sexo'] ?? '',
+                    ],
+                    'procedimento' => [
+                        'codprocedimento' => $fila['procedimento_id'],
+                        'descricaoprocedimento' => $fila['procedimento_descricao'] ?? 'Procedimento ' . $fila['procedimento_id'],
+                    ],
+                    'especialidade' => [
+                        'codespecialidade' => $fila['especialidade_id'],
+                        'especialidade' => $fila['especialidade_descricao'] ?? 'Especialidade ' . $fila['especialidade_id'],
+                        'ativo' => true,
+                        'id' => $fila['especialidade_id'],
+                    ],
+                    'unidade' => [
+                        'cod_unidade' => $fila['unidade_id'],
+                        'des_unidade' => $fila['unidade_descricao'] ?? 'Unidade ' . $fila['unidade_id'],
+                    ],
+                    'medico_solicitante' => [
+                        'cod_profissional' => $fila['medico_solicitante_id'],
+                        'des_profissional' => $fila['medico_nome'] ?? 'Médico ' . $fila['medico_solicitante_id'],
+                        'crm' => $fila['medico_crm'] ?? '',
+                    ],
+                ];
+            }, $filas);
 
             // Criptografar resposta
-            $respostaJson = json_encode($filas);
+            $respostaJson = json_encode($filasFormatadas);
             $respostaCriptografada = Crypto::encryptString($respostaJson);
 
             // Retornar no formato esperado pelo Flutter (apenas 'dados')
