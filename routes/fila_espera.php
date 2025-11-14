@@ -76,7 +76,39 @@ try {
                         _criarTabelasSeNaoExistem($db);
                         
                         $descricao = $fila['descricao'] ?? 'Nova Fila';
-                        $cor = $fila['cor'] ?? 4280391411; // Cor padrão (azul)
+                        // Converter cor para garantir que seja um valor válido dentro do range de INTEGER
+                        $corRaw = $fila['cor'] ?? 4280391411;
+                        
+                        // Converter para inteiro
+                        if (is_string($corRaw)) {
+                            $corRaw = (int)$corRaw;
+                        } else {
+                            $corRaw = (int)$corRaw;
+                        }
+                        
+                        // Se for negativo (valor signed 32-bit), converter para positivo
+                        // Color.value em Flutter pode retornar valores negativos quando interpretado como signed
+                        if ($corRaw < 0) {
+                            // Converter de signed 32-bit para valor positivo equivalente
+                            // Usar abs() e depois garantir que esteja no range
+                            $cor = abs($corRaw);
+                            // Se ainda for muito grande, usar módulo
+                            if ($cor > 2147483647) {
+                                $cor = $cor % 2147483647;
+                            }
+                        } else {
+                            $cor = $corRaw;
+                            // Garantir que não exceda o máximo de INTEGER do PostgreSQL
+                            if ($cor > 2147483647) {
+                                $cor = $cor % 2147483647;
+                            }
+                        }
+                        
+                        // Garantir que seja pelo menos 0
+                        if ($cor < 0) {
+                            $cor = 4280391411; // Cor padrão (azul)
+                        }
+                        
                         // Aceitar tanto camelCase quanto snake_case
                         $tipoFila = $fila['tipoFila'] ?? $fila['tipo_fila'] ?? 'consulta';
                         
@@ -147,6 +179,29 @@ try {
                 break;
             }
 
+            // Validar e converter campos INTEGER para garantir que estejam dentro do range
+            $pacienteId = (int)$dados['paciente_id'];
+            if ($pacienteId < -2147483648 || $pacienteId > 2147483647) {
+                $response->error('paciente_id fora do range de INTEGER: ' . $dados['paciente_id'], 400);
+                break;
+            }
+            
+            $especialidadeId = (int)$dados['especialidade_id'];
+            if ($especialidadeId < -2147483648 || $especialidadeId > 2147483647) {
+                $response->error('especialidade_id fora do range de INTEGER: ' . $dados['especialidade_id'], 400);
+                break;
+            }
+            
+            $pontuacaoClinica = isset($dados['pontuacao_clinica']) ? (int)$dados['pontuacao_clinica'] : 0;
+            if ($pontuacaoClinica < -2147483648 || $pontuacaoClinica > 2147483647) {
+                $pontuacaoClinica = 0; // Resetar se fora do range
+            }
+            
+            $posicaoFila = isset($dados['posicao_fila']) ? (int)$dados['posicao_fila'] : 0;
+            if ($posicaoFila < -2147483648 || $posicaoFila > 2147483647) {
+                $posicaoFila = 0; // Resetar se fora do range
+            }
+
             // Preparar dados para inserção
             $sql = "INSERT INTO fila_espera (
                 fila_id,
@@ -173,26 +228,29 @@ try {
 
             $params = [
                 $filaId,
-                $dados['paciente_id'],
+                $pacienteId,
                 $dados['procedimento_id'],
-                $dados['especialidade_id'],
+                $especialidadeId,
                 $dados['unidade_id'],
                 $dados['medico_solicitante_id'],
                 $dados['usuario_regulador_id'] ?? null,
                 $dados['status'] ?? 'pendente',
                 $dados['prioridade'] ?? 'eletiva',
-                $dados['pontuacao_clinica'] ?? 0,
+                $pontuacaoClinica,
                 $dados['data_solicitacao'],
                 $dados['data_prazo'] ?? null,
                 $dados['data_entrada_fila'] ?? date('Y-m-d H:i:s'),
                 $dados['motivo_clinico'],
                 $dados['observacoes_regulacao'] ?? null,
-                $dados['posicao_fila'] ?? 0,
+                $posicaoFila,
                 $dados['tempo_espera_estimado'] ?? 0,
             ];
 
             // Executar inserção
             try {
+                // Log dos parâmetros para debug (remover em produção)
+                error_log('Parâmetros da inserção: ' . json_encode($params));
+                
                 $stmt = $db->query($sql, $params);
                 $result = $stmt->fetch();
                 $novaFilaId = $result['id'] ?? null;
@@ -206,7 +264,14 @@ try {
                 if (strpos($e->getMessage(), 'does not exist') !== false) {
                     $response->error('Tabela fila_espera não existe. Execute o script create_fila_espera_table.sql no banco de dados.', 500);
                 } else {
-                    $response->error('Erro ao inserir fila: ' . $e->getMessage(), 500);
+                    // Incluir informações sobre os parâmetros no erro para debug
+                    $paramsInfo = array_map(function($param) {
+                        if (is_numeric($param)) {
+                            return gettype($param) . '(' . $param . ')';
+                        }
+                        return gettype($param) . '(' . (is_string($param) ? substr($param, 0, 50) : json_encode($param)) . ')';
+                    }, $params);
+                    $response->error('Erro ao inserir fila: ' . $e->getMessage() . ' | Parâmetros: ' . json_encode($paramsInfo), 500);
                 }
                 break;
             }
