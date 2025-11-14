@@ -443,26 +443,62 @@ try {
                 // Buscar dados do paciente se possível
                 if (!empty($fila['paciente_id'])) {
                     try {
-                        $pacienteData = $db->fetchOne("SELECT nome, cpf, datanascimento, sexo, idade FROM paciente WHERE codpaciente = ?", [$fila['paciente_id']]);
+                        // Tentar diferentes possibilidades de nome de tabela/coluna
+                        $pacienteData = null;
+                        $pacienteId = $fila['paciente_id'];
+                        
+                        // Tentativa 1: paciente.codpaciente (nome correto: nomepaciente, data nascimento com espaço)
+                        try {
+                            $pacienteData = $db->fetchOne("SELECT nomepaciente, cpf, \"data nascimento\" as datanascimento, sexo FROM paciente WHERE codpaciente = ?", [$pacienteId]);
+                        } catch (Exception $e1) {
+                            error_log("Erro ao buscar paciente (codpaciente): " . $e1->getMessage());
+                            
+                            // Tentativa 2: paciente.id
+                            try {
+                                $pacienteData = $db->fetchOne("SELECT nomepaciente, cpf, \"data nascimento\" as datanascimento, sexo FROM paciente WHERE id = ?", [$pacienteId]);
+                            } catch (Exception $e2) {
+                                error_log("Erro ao buscar paciente (id): " . $e2->getMessage());
+                                
+                                // Tentativa 3: pacientes.codpaciente
+                                try {
+                                    $pacienteData = $db->fetchOne("SELECT nomepaciente, cpf, \"data nascimento\" as datanascimento, sexo FROM pacientes WHERE codpaciente = ?", [$pacienteId]);
+                                } catch (Exception $e3) {
+                                    error_log("Erro ao buscar paciente (pacientes.codpaciente): " . $e3->getMessage());
+                                    
+                                    // Tentativa 4: pacientes.id
+                                    try {
+                                        $pacienteData = $db->fetchOne("SELECT nomepaciente, cpf, \"data nascimento\" as datanascimento, sexo FROM pacientes WHERE id = ?", [$pacienteId]);
+                                    } catch (Exception $e4) {
+                                        error_log("Erro ao buscar paciente (pacientes.id): " . $e4->getMessage());
+                                    }
+                                }
+                            }
+                        }
+                        
                         if ($pacienteData) {
-                            $pacienteNome = $pacienteData['nome'] ?? $pacienteNome;
+                            $pacienteNome = $pacienteData['nomepaciente'] ?? $pacienteNome;
                             $pacienteCpf = $pacienteData['cpf'] ?? '';
                             $pacienteDataNasc = $pacienteData['datanascimento'] ?? '';
                             $pacienteSexo = $pacienteData['sexo'] ?? '';
-                            $pacienteIdade = $pacienteData['idade'] ?? '';
+                            $pacienteIdade = '';
                             
-                            // Calcular idade se não vier preenchida
-                            if (empty($pacienteIdade) && !empty($pacienteDataNasc)) {
+                            error_log("✅ Paciente encontrado: ID=$pacienteId, Nome=$pacienteNome");
+                            
+                            // Calcular idade a partir da data de nascimento
+                            if (!empty($pacienteDataNasc)) {
                                 try {
                                     $dataNasc = new DateTime($pacienteDataNasc);
                                     $hoje = new DateTime();
                                     $pacienteIdade = (string)$hoje->diff($dataNasc)->y;
                                 } catch (Exception $e) {
-                                    // Ignora erro
+                                    error_log("Erro ao calcular idade: " . $e->getMessage());
                                 }
                             }
+                        } else {
+                            error_log("⚠️ Paciente não encontrado: ID=$pacienteId");
                         }
                     } catch (Exception $e) {
+                        error_log("❌ Erro ao buscar paciente: " . $e->getMessage());
                         // Ignora erro, usa valores padrão
                     }
                 }
@@ -2397,25 +2433,62 @@ function _formatarFilaCompleta($db, $fila) {
     // Buscar dados do paciente
     if (!empty($fila['paciente_id'])) {
         try {
-            $pacienteData = $db->fetchOne("SELECT nome, cpf, datanascimento, sexo, idade FROM paciente WHERE codpaciente = ?", [$fila['paciente_id']]);
+            // Tentar diferentes possibilidades de nome de tabela/coluna
+            $pacienteData = null;
+            $pacienteId = $fila['paciente_id'];
+            
+            // Tentativa 1: paciente.codpaciente (nome correto: nomepaciente, data nascimento com espaço)
+            try {
+                $pacienteData = $db->fetchOne("SELECT nomepaciente, cpf, \"data nascimento\" as datanascimento, sexo FROM paciente WHERE codpaciente = ?", [$pacienteId]);
+            } catch (Exception $e1) {
+                error_log("Erro ao buscar paciente (codpaciente): " . $e1->getMessage());
+                
+                // Tentativa 2: paciente.id
+                try {
+                    $pacienteData = $db->fetchOne("SELECT nomepaciente, cpf, \"data nascimento\" as datanascimento, sexo FROM paciente WHERE id = ?", [$pacienteId]);
+                } catch (Exception $e2) {
+                    error_log("Erro ao buscar paciente (id): " . $e2->getMessage());
+                    
+                    // Tentativa 3: pacientes.codpaciente
+                    try {
+                        $pacienteData = $db->fetchOne("SELECT nomepaciente, cpf, \"data nascimento\" as datanascimento, sexo FROM pacientes WHERE codpaciente = ?", [$pacienteId]);
+                    } catch (Exception $e3) {
+                        error_log("Erro ao buscar paciente (pacientes.codpaciente): " . $e3->getMessage());
+                        
+                        // Tentativa 4: pacientes.id
+                        try {
+                            $pacienteData = $db->fetchOne("SELECT nomepaciente, cpf, \"data nascimento\" as datanascimento, sexo FROM pacientes WHERE id = ?", [$pacienteId]);
+                        } catch (Exception $e4) {
+                            error_log("Erro ao buscar paciente (pacientes.id): " . $e4->getMessage());
+                        }
+                    }
+                }
+            }
+            
             if ($pacienteData) {
-                $pacienteNome = $pacienteData['nome'] ?? $pacienteNome;
+                $pacienteNome = $pacienteData['nomepaciente'] ?? $pacienteNome;
                 $pacienteCpf = $pacienteData['cpf'] ?? '';
                 $pacienteDataNasc = $pacienteData['datanascimento'] ?? '';
                 $pacienteSexo = $pacienteData['sexo'] ?? '';
-                $pacienteIdade = $pacienteData['idade'] ?? '';
+                $pacienteIdade = '';
                 
-                if (empty($pacienteIdade) && !empty($pacienteDataNasc)) {
+                error_log("✅ Paciente encontrado: ID=$pacienteId, Nome=$pacienteNome");
+                
+                // Calcular idade a partir da data de nascimento
+                if (!empty($pacienteDataNasc)) {
                     try {
                         $dataNasc = new DateTime($pacienteDataNasc);
                         $hoje = new DateTime();
                         $pacienteIdade = (string)$hoje->diff($dataNasc)->y;
                     } catch (Exception $e) {
-                        // Ignora erro
+                        error_log("Erro ao calcular idade: " . $e->getMessage());
                     }
                 }
+            } else {
+                error_log("⚠️ Paciente não encontrado: ID=$pacienteId");
             }
         } catch (Exception $e) {
+            error_log("❌ Erro ao buscar paciente: " . $e->getMessage());
             // Ignora erro
         }
     }
