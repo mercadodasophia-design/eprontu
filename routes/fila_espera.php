@@ -51,19 +51,69 @@ try {
                 'motivo_clinico'
             ];
 
+            $camposFaltando = [];
             foreach ($camposObrigatorios as $campo) {
-                if (!isset($dados[$campo])) {
-                    $response->error("Campo obrigatório ausente: $campo", 400);
-                    break 2;
+                if (!isset($dados[$campo]) || $dados[$campo] === null || $dados[$campo] === '') {
+                    $camposFaltando[] = $campo;
                 }
+            }
+
+            if (!empty($camposFaltando)) {
+                $response->error('Campos obrigatórios ausentes: ' . implode(', ', $camposFaltando), 400);
+                break;
             }
 
             // Extrair dados da fila
             $fila = $dados['fila'];
-            $filaId = is_array($fila) ? ($fila['id'] ?? null) : $fila;
+            $filaId = null;
             
-            if (!$filaId) {
-                $response->error('ID da fila não fornecido', 400);
+            if (is_array($fila)) {
+                $filaId = $fila['id'] ?? null;
+                
+                // Se a fila não tem ID, criar uma nova fila
+                if (!$filaId || $filaId <= 0) {
+                    try {
+                        _criarTabelasSeNaoExistem($db);
+                        
+                        $descricao = $fila['descricao'] ?? 'Nova Fila';
+                        $cor = $fila['cor'] ?? 4280391411; // Cor padrão (azul)
+                        // Aceitar tanto camelCase quanto snake_case
+                        $tipoFila = $fila['tipoFila'] ?? $fila['tipo_fila'] ?? 'consulta';
+                        
+                        // Verificar se já existe uma fila com essa descrição
+                        $filaExistente = $db->fetchOne(
+                            "SELECT id FROM filas WHERE descricao = ? AND tipo_fila = ?",
+                            [$descricao, $tipoFila]
+                        );
+                        
+                        if ($filaExistente) {
+                            $filaId = $filaExistente['id'];
+                        } else {
+                            // Criar nova fila
+                            $sqlNovaFila = "INSERT INTO filas (descricao, cor, tipo_fila, created_at, updated_at) 
+                                          VALUES (?, ?, ?, NOW(), NOW()) RETURNING id";
+                            $stmt = $db->query($sqlNovaFila, [$descricao, $cor, $tipoFila]);
+                            $result = $stmt->fetch();
+                            $filaId = $result['id'] ?? null;
+                            
+                            if (!$filaId) {
+                                $response->error('Erro ao criar nova fila', 500);
+                                break;
+                            }
+                        }
+                    } catch (Exception $e) {
+                        $response->error('Erro ao criar fila: ' . $e->getMessage(), 500);
+                        break;
+                    }
+                }
+            } else if (is_numeric($fila)) {
+                $filaId = (int)$fila;
+            } else if (is_string($fila) && is_numeric($fila)) {
+                $filaId = (int)$fila;
+            }
+            
+            if (!$filaId || $filaId <= 0) {
+                $response->error('ID da fila não fornecido ou inválido. Fila recebida: ' . json_encode($fila), 400);
                 break;
             }
             
