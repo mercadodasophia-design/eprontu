@@ -354,103 +354,128 @@ try {
                     FROM fila_espera fe
                     LEFT JOIN filas f ON fe.fila_id = f.id
                     LEFT JOIN paciente p ON fe.paciente_id = p.codpaciente
-                    LEFT JOIN procedimentos proc ON fe.procedimento_id = proc.cod_procedimento
+                    LEFT JOIN procedimentos proc ON fe.procedimento_id::text = proc.codprocedimento::text
                     LEFT JOIN especialidades e ON fe.especialidade_id = e.codespecialidade
                     LEFT JOIN unidades u ON fe.unidade_id = u.cod_unidade
                     LEFT JOIN medicos m ON fe.medico_solicitante_id = m.cod_profissional
                     $whereClause
                     ORDER BY fe.data_entrada_fila ASC";
 
-            $filas = $db->fetchAll($sql, $params);
+            try {
+                $filas = $db->fetchAll($sql, $params);
+            } catch (Exception $e) {
+                error_log('Erro ao buscar filas: ' . $e->getMessage());
+                error_log('SQL: ' . $sql);
+                error_log('Params: ' . print_r($params, true));
+                $response->error('Erro ao buscar filas: ' . $e->getMessage() . ' | SQL: ' . $sql, 500);
+                break;
+            }
+            
+            if ($filas === false) {
+                $response->error('Erro ao buscar filas: resultado falso', 500);
+                break;
+            }
             
             // Formatar resposta com objetos aninhados
-            $filasFormatadas = array_map(function($fila) {
-                return [
-                    'id' => $fila['id'],
-                    'fila_id' => $fila['fila_id'],
-                    'paciente_id' => $fila['paciente_id'],
-                    'procedimento_id' => $fila['procedimento_id'],
-                    'especialidade_id' => $fila['especialidade_id'],
-                    'unidade_id' => $fila['unidade_id'],
-                    'medico_solicitante_id' => $fila['medico_solicitante_id'],
-                    'usuario_regulador_id' => $fila['usuario_regulador_id'],
-                    'status' => $fila['status'],
-                    'prioridade' => $fila['prioridade'],
-                    'pontuacao_clinica' => $fila['pontuacao_clinica'],
-                    'data_solicitacao' => $fila['data_solicitacao'],
-                    'data_prazo' => $fila['data_prazo'],
-                    'data_regulacao' => $fila['data_regulacao'],
-                    'data_agendamento' => $fila['data_agendamento'],
-                    'data_previsao_atendimento' => $fila['data_previsao_atendimento'],
-                    'data_conclusao' => $fila['data_conclusao'],
-                    'data_entrada_fila' => $fila['data_entrada_fila'],
-                    'motivo_clinico' => $fila['motivo_clinico'],
-                    'observacoes_regulacao' => $fila['observacoes_regulacao'],
-                    'documentos_anexos' => $fila['documentos_anexos'],
-                    'posicao_fila' => $fila['posicao_fila'],
-                    'tempo_espera_estimado' => $fila['tempo_espera_estimado'],
-                    'created_at' => $fila['created_at'],
-                    'updated_at' => $fila['updated_at'],
+            $filasFormatadas = [];
+            foreach ($filas as $fila) {
+                // Calcular idade se não vier preenchida
+                $idade = '';
+                if (!empty($fila['paciente_idade'])) {
+                    $idade = (string)$fila['paciente_idade'];
+                } elseif (!empty($fila['paciente_datanascimento'])) {
+                    try {
+                        $dataNasc = new DateTime($fila['paciente_datanascimento']);
+                        $hoje = new DateTime();
+                        $idadeCalculada = $hoje->diff($dataNasc)->y;
+                        $idade = (string)$idadeCalculada;
+                    } catch (Exception $e) {
+                        $idade = '';
+                    }
+                }
+                
+                $filasFormatadas[] = [
+                    'id' => $fila['id'] ?? null,
+                    'fila_id' => $fila['fila_id'] ?? null,
+                    'paciente_id' => $fila['paciente_id'] ?? null,
+                    'procedimento_id' => $fila['procedimento_id'] ?? null,
+                    'especialidade_id' => $fila['especialidade_id'] ?? null,
+                    'unidade_id' => $fila['unidade_id'] ?? null,
+                    'medico_solicitante_id' => $fila['medico_solicitante_id'] ?? null,
+                    'usuario_regulador_id' => $fila['usuario_regulador_id'] ?? null,
+                    'status' => $fila['status'] ?? 'pendente',
+                    'prioridade' => $fila['prioridade'] ?? 'eletiva',
+                    'pontuacao_clinica' => $fila['pontuacao_clinica'] ?? 0,
+                    'data_solicitacao' => $fila['data_solicitacao'] ?? null,
+                    'data_prazo' => $fila['data_prazo'] ?? null,
+                    'data_regulacao' => $fila['data_regulacao'] ?? null,
+                    'data_agendamento' => $fila['data_agendamento'] ?? null,
+                    'data_previsao_atendimento' => $fila['data_previsao_atendimento'] ?? null,
+                    'data_conclusao' => $fila['data_conclusao'] ?? null,
+                    'data_entrada_fila' => $fila['data_entrada_fila'] ?? null,
+                    'motivo_clinico' => $fila['motivo_clinico'] ?? '',
+                    'observacoes_regulacao' => $fila['observacoes_regulacao'] ?? null,
+                    'documentos_anexos' => $fila['documentos_anexos'] ?? '[]',
+                    'posicao_fila' => $fila['posicao_fila'] ?? 0,
+                    'tempo_espera_estimado' => $fila['tempo_espera_estimado'] ?? 0.0,
+                    'created_at' => $fila['created_at'] ?? null,
+                    'updated_at' => $fila['updated_at'] ?? null,
                     // Objetos aninhados
                     'fila' => [
-                        'id' => $fila['fila_id'],
-                        'descricao' => $fila['fila_descricao'] ?? 'Fila ' . $fila['fila_id'],
+                        'id' => $fila['fila_id'] ?? null,
+                        'descricao' => !empty($fila['fila_descricao']) ? $fila['fila_descricao'] : 'Fila ' . ($fila['fila_id'] ?? ''),
                         'cor' => $fila['fila_cor'] ?? 4280391411,
                         'tipoFila' => $fila['fila_tipo_fila'] ?? 'consulta',
                     ],
                     'paciente' => [
-                        'id' => $fila['paciente_id'],
-                        'nome' => !empty($fila['paciente_nome']) ? $fila['paciente_nome'] : 'Paciente ' . $fila['paciente_id'],
+                        'id' => $fila['paciente_id'] ?? null,
+                        'nome' => !empty($fila['paciente_nome']) ? $fila['paciente_nome'] : 'Paciente ' . ($fila['paciente_id'] ?? ''),
                         'cpf' => $fila['paciente_cpf'] ?? '',
                         'datanascimento' => $fila['paciente_datanascimento'] ?? '',
-                        'idade' => !empty($fila['paciente_idade']) ? $fila['paciente_idade'] : (function() use ($fila) {
-                            // Calcular idade a partir da data de nascimento se não vier preenchida
-                            if (!empty($fila['paciente_datanascimento'])) {
-                                try {
-                                    $dataNasc = new DateTime($fila['paciente_datanascimento']);
-                                    $hoje = new DateTime();
-                                    $idade = $hoje->diff($dataNasc)->y;
-                                    return (string)$idade;
-                                } catch (Exception $e) {
-                                    return '';
-                                }
-                            }
-                            return '';
-                        })(),
+                        'idade' => $idade,
                         'sexo' => $fila['paciente_sexo'] ?? '',
                     ],
                     'procedimento' => [
-                        'codprocedimento' => $fila['procedimento_id'],
-                        'descricaoprocedimento' => $fila['procedimento_descricao'] ?? 'Procedimento ' . $fila['procedimento_id'],
+                        'codprocedimento' => $fila['procedimento_id'] ?? null,
+                        'descricaoprocedimento' => !empty($fila['procedimento_descricao']) ? $fila['procedimento_descricao'] : 'Procedimento ' . ($fila['procedimento_id'] ?? ''),
                     ],
                     'especialidade' => [
-                        'codespecialidade' => $fila['especialidade_id'],
-                        'especialidade' => $fila['especialidade_descricao'] ?? 'Especialidade ' . $fila['especialidade_id'],
+                        'codespecialidade' => $fila['especialidade_id'] ?? null,
+                        'especialidade' => !empty($fila['especialidade_descricao']) ? $fila['especialidade_descricao'] : 'Especialidade ' . ($fila['especialidade_id'] ?? ''),
                         'ativo' => true,
-                        'id' => $fila['especialidade_id'],
+                        'id' => $fila['especialidade_id'] ?? null,
                     ],
                     'unidade' => [
-                        'cod_unidade' => $fila['unidade_id'],
-                        'des_unidade' => $fila['unidade_descricao'] ?? 'Unidade ' . $fila['unidade_id'],
+                        'cod_unidade' => $fila['unidade_id'] ?? null,
+                        'des_unidade' => !empty($fila['unidade_descricao']) ? $fila['unidade_descricao'] : 'Unidade ' . ($fila['unidade_id'] ?? ''),
                     ],
                     'medico_solicitante' => [
-                        'cod_profissional' => $fila['medico_solicitante_id'],
-                        'des_profissional' => $fila['medico_nome'] ?? 'Médico ' . $fila['medico_solicitante_id'],
+                        'cod_profissional' => $fila['medico_solicitante_id'] ?? null,
+                        'des_profissional' => !empty($fila['medico_nome']) ? $fila['medico_nome'] : 'Médico ' . ($fila['medico_solicitante_id'] ?? ''),
                         'crm' => $fila['medico_crm'] ?? '',
                     ],
                 ];
-            }, $filas);
+            }
 
             // Criptografar resposta
-            $respostaJson = json_encode($filasFormatadas);
-            $respostaCriptografada = Crypto::encryptString($respostaJson);
+            try {
+                $respostaJson = json_encode($filasFormatadas);
+                if ($respostaJson === false) {
+                    throw new Exception('Erro ao codificar JSON: ' . json_last_error_msg());
+                }
+                $respostaCriptografada = Crypto::encryptString($respostaJson);
 
-            // Retornar no formato esperado pelo Flutter (apenas 'dados')
-            header('Content-Type: application/json');
-            echo json_encode([
-                'dados' => $respostaCriptografada
-            ]);
-            exit;
+                // Retornar no formato esperado pelo Flutter (apenas 'dados')
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'dados' => $respostaCriptografada
+                ]);
+                exit;
+            } catch (Exception $e) {
+                error_log('Erro ao processar resposta: ' . $e->getMessage());
+                $response->error('Erro ao processar resposta: ' . $e->getMessage(), 500);
+                break;
+            }
             break;
 
         default:
