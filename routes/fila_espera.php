@@ -39,6 +39,53 @@ error_log('Fila Espera - Action: ' . $action . ' | ID: ' . ($id ?? 'null') . ' |
 
 try {
     switch ($action) {
+        case 'filas':
+            // Listar todas as filas disponíveis
+            if ($method !== 'GET') {
+                $response->error('Método não permitido', 405);
+                break;
+            }
+            
+            try {
+                _criarTabelasSeNaoExistem($db);
+                
+                $filas = $db->fetchAll("SELECT id, descricao, cor, tipo_fila FROM filas ORDER BY descricao ASC", []);
+                
+                if ($filas === false) {
+                    $filas = [];
+                }
+                
+                // Formatar resposta
+                $filasFormatadas = [];
+                foreach ($filas as $fila) {
+                    $filasFormatadas[] = [
+                        'id' => $fila['id'],
+                        'descricao' => $fila['descricao'] ?? '',
+                        'cor' => $fila['cor'] ?? 4280391411,
+                        'tipoFila' => $fila['tipo_fila'] ?? 'consulta',
+                    ];
+                }
+                
+                // Criptografar resposta
+                $respostaJson = json_encode($filasFormatadas);
+                if ($respostaJson === false) {
+                    $respostaJson = '[]';
+                }
+                
+                $respostaCriptografada = Crypto::encryptString($respostaJson);
+                
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'dados' => $respostaCriptografada
+                ]);
+                exit;
+            } catch (Exception $e) {
+                error_log('Erro ao listar filas: ' . $e->getMessage());
+                $response->error('Erro ao listar filas: ' . $e->getMessage(), 500);
+                break;
+            }
+            break;
+            
         case 'criar':
             if ($method !== 'POST') {
                 $response->error('Método não permitido', 405);
