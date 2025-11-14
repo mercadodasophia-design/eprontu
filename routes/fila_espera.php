@@ -31,11 +31,16 @@ try {
             }
 
             // Descriptografar dados
-            $dadosJson = Crypto::decryptData($input['dados']);
-            $dados = json_decode($dadosJson, true);
+            try {
+                $dadosJson = Crypto::decryptData($input['dados']);
+                $dados = json_decode($dadosJson, true);
 
-            if (!$dados) {
-                $response->error('Dados inválidos', 400);
+                if (!$dados || json_last_error() !== JSON_ERROR_NONE) {
+                    $response->error('Dados inválidos: ' . json_last_error_msg(), 400);
+                    break;
+                }
+            } catch (Exception $e) {
+                $response->error('Erro ao descriptografar dados: ' . $e->getMessage(), 400);
                 break;
             }
 
@@ -56,6 +61,45 @@ try {
             // Extrair dados da fila
             $fila = $dados['fila'];
             $filaId = is_array($fila) ? ($fila['id'] ?? null) : $fila;
+            
+            if (!$filaId) {
+                $response->error('ID da fila não fornecido', 400);
+                break;
+            }
+            
+            // Converter data_solicitacao para formato correto se necessário
+            if (isset($dados['data_solicitacao'])) {
+                // Se for string ISO, converter para timestamp
+                if (is_string($dados['data_solicitacao'])) {
+                    $dados['data_solicitacao'] = date('Y-m-d H:i:s', strtotime($dados['data_solicitacao']));
+                }
+            }
+            
+            // Converter data_prazo se fornecido
+            if (isset($dados['data_prazo']) && $dados['data_prazo'] !== null && $dados['data_prazo'] !== '') {
+                if (is_string($dados['data_prazo'])) {
+                    $timestamp = strtotime($dados['data_prazo']);
+                    if ($timestamp !== false) {
+                        $dados['data_prazo'] = date('Y-m-d H:i:s', $timestamp);
+                    } else {
+                        $dados['data_prazo'] = null;
+                    }
+                }
+            } else {
+                $dados['data_prazo'] = null;
+            }
+
+            // Verificar se a tabela existe
+            try {
+                $checkTable = $db->fetchOne("SELECT 1 FROM information_schema.tables WHERE table_name = 'fila_espera'", []);
+                if (!$checkTable) {
+                    $response->error('Tabela fila_espera não existe. Execute o script create_fila_espera_table.sql no banco de dados.', 500);
+                    break;
+                }
+            } catch (Exception $e) {
+                $response->error('Erro ao verificar tabela: ' . $e->getMessage(), 500);
+                break;
+            }
 
             // Preparar dados para inserção
             $sql = "INSERT INTO fila_espera (
@@ -102,11 +146,22 @@ try {
             ];
 
             // Executar inserção
-            $result = $db->query($sql, $params);
-            $novaFilaId = $result[0]['id'] ?? null;
+            try {
+                $stmt = $db->query($sql, $params);
+                $result = $stmt->fetch();
+                $novaFilaId = $result['id'] ?? null;
 
-            if (!$novaFilaId) {
-                $response->error('Erro ao criar fila', 500);
+                if (!$novaFilaId) {
+                    $response->error('Erro ao criar fila: ID não retornado', 500);
+                    break;
+                }
+            } catch (Exception $e) {
+                // Verificar se é erro de tabela não existe
+                if (strpos($e->getMessage(), 'does not exist') !== false) {
+                    $response->error('Tabela fila_espera não existe. Execute o script create_fila_espera_table.sql no banco de dados.', 500);
+                } else {
+                    $response->error('Erro ao inserir fila: ' . $e->getMessage(), 500);
+                }
                 break;
             }
 
@@ -193,6 +248,17 @@ try {
             break;
     }
 } catch (Exception $e) {
-    $response->error('Erro: ' . $e->getMessage(), 500);
+    // Log do erro completo para debug
+    error_log('Erro em fila_espera.php: ' . $e->getMessage());
+    error_log('Stack trace: ' . $e->getTraceAsString());
+    
+    // Retornar erro detalhado
+    header('Content-Type: application/json');
+    http_response_code(500);
+    echo json_encode([
+        'status' => 'erro',
+        'dados' => 'Erro: ' . $e->getMessage() . ' | Arquivo: ' . $e->getFile() . ' | Linha: ' . $e->getLine()
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
 }
 
